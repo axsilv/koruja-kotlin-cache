@@ -1,5 +1,6 @@
 package com.koruja.cache
 
 enum class CacheExpirationOperationType {
-    ADD
+    ADD,
+    REMOVE_WORKER
 }
