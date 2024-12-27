@@ -9,6 +9,7 @@ class SingleCacheTest : BehaviorSpec({
         given("A SingleCache instance") {
             `when`("Created") {
                 then("Should have one single instance of a cache") {
+                    SingleCache.insert(cache = InMemoryCache())
                     SingleCache.select().shouldNotBeNull()
                 }
             }

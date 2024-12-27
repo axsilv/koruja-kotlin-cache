@@ -1,7 +1,21 @@
 package com.koruja.cache
 
-object SingleCache {
-    private val cache: Cache = Cache()
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
-    fun select(): Cache = cache
+object SingleCache {
+    private var cache: Cache? = null
+    private var started: Boolean = false
+    private val mutex: Mutex = Mutex()
+
+    suspend fun insert(cache: Cache) = mutex.withLock {
+        if (started.not()) {
+            this.cache = cache
+            this.started = true
+        }
+    }
+
+    fun select(): Cache? = cache
+
+    fun isStarted(): Boolean = started
 }

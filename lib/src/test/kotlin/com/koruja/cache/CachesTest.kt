@@ -12,12 +12,12 @@ class CachesTest : BehaviorSpec({
             `when`("Insert two caches") {
                 then("Should keep in memory") {
                     val key1 = Caches.CachesKey("key1")
-                    val cache1 = Cache()
+                    val inMemoryCache1 = InMemoryCache()
                     val key2 = Caches.CachesKey("key2")
-                    val cache2 = Cache()
+                    val inMemoryCache2 = InMemoryCache()
 
-                    Caches.insert(key = key1, cache = cache1)
-                    Caches.insert(key = key2, cache = cache2)
+                    Caches.insert(key = key1, cache = inMemoryCache1)
+                    Caches.insert(key = key2, cache = inMemoryCache2)
 
                     Caches.select(key1).shouldNotBeNull()
                     Caches.select(key2).shouldNotBeNull()
@@ -27,12 +27,12 @@ class CachesTest : BehaviorSpec({
             `when`("Delete one cache") {
                 then("Should remain one cache in memory") {
                     val key1 = Caches.CachesKey("key1")
-                    val cache1 = Cache()
+                    val inMemoryCache1 = InMemoryCache()
                     val key2 = Caches.CachesKey("key2")
-                    val cache2 = Cache()
+                    val inMemoryCache2 = InMemoryCache()
 
-                    Caches.insert(key = key1, cache = cache1)
-                    Caches.insert(key = key2, cache = cache2)
+                    Caches.insert(key = key1, cache = inMemoryCache1)
+                    Caches.insert(key = key2, cache = inMemoryCache2)
 
                     Caches.select(key1).shouldNotBeNull()
                     Caches.select(key2).shouldNotBeNull()
@@ -47,12 +47,12 @@ class CachesTest : BehaviorSpec({
             `when`("Select all caches") {
                 then("Should return two caches") {
                     val key1 = Caches.CachesKey("key1")
-                    val cache1 = Cache()
+                    val inMemoryCache1 = InMemoryCache()
                     val key2 = Caches.CachesKey("key2")
-                    val cache2 = Cache()
+                    val inMemoryCache2 = InMemoryCache()
 
-                    Caches.insert(key = key1, cache = cache1)
-                    Caches.insert(key = key2, cache = cache2)
+                    Caches.insert(key = key1, cache = inMemoryCache1)
+                    Caches.insert(key = key2, cache = inMemoryCache2)
 
                     Caches.selectAll().size shouldBe 2
                 }

@@ -19,15 +19,15 @@ class CacheTest : BehaviorSpec({
         given("N concurrent insert operations") {
             `when`("Insert") {
                 then("Should contain all elements") {
-                    val cache = Cache()
+                    val inMemoryCache = InMemoryCache()
 
                     entries().map { entry ->
                         launch {
-                            cache.insert(entry = entry, expiresAt = entry.expiresAt)
+                            inMemoryCache.insert(entry = entry, expiresAt = entry.expiresAt)
                         }
                     }.joinAll()
 
-                    cache.selectAll().getOrThrow().let {
+                    inMemoryCache.selectAll().getOrThrow().let {
                         it.size shouldBe 10
                     }
                 }
@@ -35,13 +35,13 @@ class CacheTest : BehaviorSpec({
 
             `when`("Insert Async") {
                 then("Should contain all elements") {
-                    val cache = Cache()
+                    val inMemoryCache = InMemoryCache()
 
                     entries().map { entry ->
-                        cache.insertAsync(entry = entry, expiresAt = entry.expiresAt)
+                        inMemoryCache.insertAsync(entry = entry, expiresAt = entry.expiresAt)
                     }.awaitAll()
 
-                    cache.selectAll().getOrThrow().let {
+                    inMemoryCache.selectAll().getOrThrow().let {
                         it.size shouldBe 10
                     }
                 }
@@ -49,13 +49,13 @@ class CacheTest : BehaviorSpec({
 
             `when`("Launch Insert") {
                 then("Should contain all elements") {
-                    val cache = Cache()
+                    val inMemoryCache = InMemoryCache()
 
                     entries().map { entry ->
-                        cache.launchInsert(entry = entry, expiresAt = entry.expiresAt)
+                        inMemoryCache.launchInsert(entry = entry, expiresAt = entry.expiresAt)
                     }.joinAll()
 
-                    cache.selectAll().getOrThrow().let {
+                    inMemoryCache.selectAll().getOrThrow().let {
                         it.size shouldBe 10
                     }
                 }
@@ -63,9 +63,9 @@ class CacheTest : BehaviorSpec({
 
             `when`("Delete") {
                 then("Should remove by expiration") {
-                    val cache = Cache()
+                    val inMemoryCache = InMemoryCache()
 
-                    cache.insert(
+                    inMemoryCache.insert(
                         entry =
                             CacheEntry(
                                 id = CacheEntryKey("key-test"),
@@ -75,7 +75,7 @@ class CacheTest : BehaviorSpec({
                         expiresAt = Clock.System.now().plus(2.seconds),
                     )
 
-                    cache.insert(
+                    inMemoryCache.insert(
                         entry =
                             CacheEntry(
                                 id = CacheEntryKey("key-test2"),
@@ -85,17 +85,17 @@ class CacheTest : BehaviorSpec({
                         expiresAt = Clock.System.now().plus(5.seconds),
                     )
 
-                    cache.select(CacheEntryKey("key-test")).getOrNull().shouldNotBeNull()
-                    cache.select(CacheEntryKey("key-test2")).getOrNull().shouldNotBeNull()
+                    inMemoryCache.select(CacheEntryKey("key-test")).getOrNull().shouldNotBeNull()
+                    inMemoryCache.select(CacheEntryKey("key-test2")).getOrNull().shouldNotBeNull()
 
                     delay(3.seconds)
 
-                    cache.select(CacheEntryKey("key-test")).getOrNull().shouldBeNull()
-                    cache.select(CacheEntryKey("key-test2")).getOrNull().shouldNotBeNull()
+                    inMemoryCache.select(CacheEntryKey("key-test")).getOrNull().shouldBeNull()
+                    inMemoryCache.select(CacheEntryKey("key-test2")).getOrNull().shouldNotBeNull()
 
                     delay(3.seconds)
 
-                    cache.select(CacheEntryKey("key-test2")).getOrNull().shouldBeNull()
+                    inMemoryCache.select(CacheEntryKey("key-test2")).getOrNull().shouldBeNull()
                 }
             }
         }
