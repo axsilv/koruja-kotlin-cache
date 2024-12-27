@@ -19,90 +19,90 @@ import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 
 class Cache {
-	private val cache: ConcurrentHashMap<CacheEntryKey, CacheEntry> = ConcurrentHashMap()
-	private val cacheExpirations: ConcurrentHashMap<Instant, ConcurrentLinkedQueue<CacheEntryKey>> = ConcurrentHashMap()
-	private val defaultDuration: Duration = 60.seconds
-	private val mutex: Mutex = Mutex()
-	private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    private val cache: ConcurrentHashMap<CacheEntryKey, CacheEntry> = ConcurrentHashMap()
+    private val cacheExpirations: ConcurrentHashMap<Instant, ConcurrentLinkedQueue<CacheEntryKey>> = ConcurrentHashMap()
+    private val defaultDuration: Duration = 60.seconds
+    private val mutex: Mutex = Mutex()
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
-	init {
-		scope.launch { expirationWorker() }
-	}
+    init {
+        scope.launch { expirationWorker() }
+    }
 
-	fun insert(
-		entry: CacheEntry,
-		expiresAt: Instant = Clock.System.now().plus(defaultDuration),
-	): Result<Unit> =
-		runCatching {
-			addCacheExpirations(
-				key = entry.id,
-				expiresAt = expiresAt,
-			)
+    fun insert(
+        entry: CacheEntry,
+        expiresAt: Instant = Clock.System.now().plus(defaultDuration),
+    ): Result<Unit> =
+        runCatching {
+            addCacheExpirations(
+                key = entry.id,
+                expiresAt = expiresAt,
+            )
 
-			cache[entry.id] = entry
-		}
+            cache[entry.id] = entry
+        }
 
-	fun insertAsync(
-		entry: CacheEntry,
-		expiresAt: Instant = Clock.System.now().plus(defaultDuration),
-	): Deferred<Result<Unit>> =
-		scope.async {
-			runCatching {
-				addCacheExpirations(
-					key = entry.id,
-					expiresAt = expiresAt,
-				)
+    fun insertAsync(
+        entry: CacheEntry,
+        expiresAt: Instant = Clock.System.now().plus(defaultDuration),
+    ): Deferred<Result<Unit>> =
+        scope.async {
+            runCatching {
+                addCacheExpirations(
+                    key = entry.id,
+                    expiresAt = expiresAt,
+                )
 
-				cache[entry.id] = entry
-			}
-		}
+                cache[entry.id] = entry
+            }
+        }
 
-	fun launchInsert(
-		entry: CacheEntry,
-		expiresAt: Instant = Clock.System.now().plus(defaultDuration),
-	): Job =
-		scope.launch {
-			runCatching {
-				addCacheExpirations(
-					key = entry.id,
-					expiresAt = expiresAt,
-				)
+    fun launchInsert(
+        entry: CacheEntry,
+        expiresAt: Instant = Clock.System.now().plus(defaultDuration),
+    ): Job =
+        scope.launch {
+            runCatching {
+                addCacheExpirations(
+                    key = entry.id,
+                    expiresAt = expiresAt,
+                )
 
-				cache[entry.id] = entry
-			}
-		}
+                cache[entry.id] = entry
+            }
+        }
 
-	private fun addCacheExpirations(
-		key: CacheEntryKey,
-		expiresAt: Instant,
-	) = cacheExpirations[expiresAt]?.add(key)
+    private fun addCacheExpirations(
+        key: CacheEntryKey,
+        expiresAt: Instant,
+    ) = cacheExpirations[expiresAt]?.add(key)
 
-	fun select(key: CacheEntryKey): Result<CacheEntry?> =
-		runCatching {
-			cache.get(key = key)?.let { entry ->
-				if (entry.expiresAt >= Clock.System.now()) {
-					return@runCatching entry
-				}
-			}
+    fun select(key: CacheEntryKey): Result<CacheEntry?> =
+        runCatching {
+            cache.get(key = key)?.let { entry ->
+                if (entry.expiresAt >= Clock.System.now()) {
+                    return@runCatching entry
+                }
+            }
 
-			return@runCatching null
-		}
+            return@runCatching null
+        }
 
-	fun selectAll(): Result<List<CacheEntry>> = runCatching { cache.values.toList() }
+    fun selectAll(): Result<List<CacheEntry>> = runCatching { cache.values.toList() }
 
-	private suspend fun expirationWorker() {
-		cacheExpirations.forEach { (expiresAt, keys) ->
-			if (expiresAt <= Clock.System.now()) {
-				mutex.withLock {
-					keys.forEach { cache.remove(it) }
+    private suspend fun expirationWorker() {
+        cacheExpirations.forEach { (expiresAt, keys) ->
+            if (expiresAt <= Clock.System.now()) {
+                mutex.withLock {
+                    keys.forEach { cache.remove(it) }
 
-					cacheExpirations.remove(expiresAt)
-				}
-			}
-		}
+                    cacheExpirations.remove(expiresAt)
+                }
+            }
+        }
 
-		delay(1.seconds)
+        delay(1.seconds)
 
-		expirationWorker()
-	}
+        expirationWorker()
+    }
 }

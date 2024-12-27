@@ -15,89 +15,89 @@ import kotlinx.datetime.Clock
 
 class CacheTest : BehaviorSpec({
 
-	context("Concurrent singleton cache") {
-		given("N concurrent insert operations") {
-			`when`("Insert") {
-				then("Should contain all elements") {
-					val cache = Cache()
+    context("Concurrent singleton cache") {
+        given("N concurrent insert operations") {
+            `when`("Insert") {
+                then("Should contain all elements") {
+                    val cache = Cache()
 
-					entries().map { entry ->
-						launch {
-							cache.insert(entry = entry, expiresAt = entry.expiresAt)
-						}
-					}.joinAll()
+                    entries().map { entry ->
+                        launch {
+                            cache.insert(entry = entry, expiresAt = entry.expiresAt)
+                        }
+                    }.joinAll()
 
-					cache.selectAll().getOrThrow().let {
-						it.size shouldBe 10
-					}
-				}
-			}
+                    cache.selectAll().getOrThrow().let {
+                        it.size shouldBe 10
+                    }
+                }
+            }
 
-			`when`("Insert Async") {
-				then("Should contain all elements") {
-					val cache = Cache()
+            `when`("Insert Async") {
+                then("Should contain all elements") {
+                    val cache = Cache()
 
-					entries().map { entry ->
-						cache.insertAsync(entry = entry, expiresAt = entry.expiresAt)
-					}.awaitAll()
+                    entries().map { entry ->
+                        cache.insertAsync(entry = entry, expiresAt = entry.expiresAt)
+                    }.awaitAll()
 
-					cache.selectAll().getOrThrow().let {
-						it.size shouldBe 10
-					}
-				}
-			}
+                    cache.selectAll().getOrThrow().let {
+                        it.size shouldBe 10
+                    }
+                }
+            }
 
-			`when`("Launch Insert") {
-				then("Should contain all elements") {
-					val cache = Cache()
+            `when`("Launch Insert") {
+                then("Should contain all elements") {
+                    val cache = Cache()
 
-					entries().map { entry ->
-						cache.launchInsert(entry = entry, expiresAt = entry.expiresAt)
-					}.joinAll()
+                    entries().map { entry ->
+                        cache.launchInsert(entry = entry, expiresAt = entry.expiresAt)
+                    }.joinAll()
 
-					cache.selectAll().getOrThrow().let {
-						it.size shouldBe 10
-					}
-				}
-			}
+                    cache.selectAll().getOrThrow().let {
+                        it.size shouldBe 10
+                    }
+                }
+            }
 
-			`when`("Delete") {
-				then("Should remove by expiration") {
-					val cache = Cache()
+            `when`("Delete") {
+                then("Should remove by expiration") {
+                    val cache = Cache()
 
-					cache.insert(
-						entry =
-							CacheEntry(
-								id = CacheEntryKey("key-test"),
-								payload = "payload test",
-								expiresAt = Clock.System.now().plus(2.seconds),
-							),
-						expiresAt = Clock.System.now().plus(2.seconds),
-					)
+                    cache.insert(
+                        entry =
+                            CacheEntry(
+                                id = CacheEntryKey("key-test"),
+                                payload = "payload test",
+                                expiresAt = Clock.System.now().plus(2.seconds),
+                            ),
+                        expiresAt = Clock.System.now().plus(2.seconds),
+                    )
 
-					cache.insert(
-						entry =
-							CacheEntry(
-								id = CacheEntryKey("key-test2"),
-								payload = "payload test 2",
-								expiresAt = Clock.System.now().plus(5.seconds),
-							),
-						expiresAt = Clock.System.now().plus(5.seconds),
-					)
+                    cache.insert(
+                        entry =
+                            CacheEntry(
+                                id = CacheEntryKey("key-test2"),
+                                payload = "payload test 2",
+                                expiresAt = Clock.System.now().plus(5.seconds),
+                            ),
+                        expiresAt = Clock.System.now().plus(5.seconds),
+                    )
 
-					cache.select(CacheEntryKey("key-test")).getOrNull().shouldNotBeNull()
-					cache.select(CacheEntryKey("key-test2")).getOrNull().shouldNotBeNull()
+                    cache.select(CacheEntryKey("key-test")).getOrNull().shouldNotBeNull()
+                    cache.select(CacheEntryKey("key-test2")).getOrNull().shouldNotBeNull()
 
-					delay(3.seconds)
+                    delay(3.seconds)
 
-					cache.select(CacheEntryKey("key-test")).getOrNull().shouldBeNull()
-					cache.select(CacheEntryKey("key-test2")).getOrNull().shouldNotBeNull()
+                    cache.select(CacheEntryKey("key-test")).getOrNull().shouldBeNull()
+                    cache.select(CacheEntryKey("key-test2")).getOrNull().shouldNotBeNull()
 
-					delay(3.seconds)
+                    delay(3.seconds)
 
-					cache.select(CacheEntryKey("key-test2")).getOrNull().shouldBeNull()
-				}
-			}
-		}
-	}
+                    cache.select(CacheEntryKey("key-test2")).getOrNull().shouldBeNull()
+                }
+            }
+        }
+    }
 })
