@@ -1,5 +1,6 @@
 package com.koruja.cache
 
+import com.koruja.cache.inmemory.InMemoryCache
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull

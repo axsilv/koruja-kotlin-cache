@@ -1,5 +1,6 @@
-package com.koruja.cache
+package com.koruja.cache.inmemory
 
+import com.koruja.cache.CacheEntry
 import com.koruja.cache.CacheEntry.CacheEntryKey
 import com.koruja.cache.CacheTestFixture.entries
 import io.kotest.core.spec.style.BehaviorSpec
@@ -13,7 +14,7 @@ import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 
-class CacheTest : BehaviorSpec({
+class InMemoryCacheTest : BehaviorSpec({
 
     context("Concurrent singleton cache") {
         given("N concurrent insert operations") {

@@ -1,5 +1,7 @@
-package com.koruja.cache
+package com.koruja.cache.inmemory
 
+import com.koruja.cache.Cache
+import com.koruja.cache.CacheEntry
 import com.koruja.cache.CacheEntry.CacheEntryKey
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
