@@ -88,6 +88,18 @@ class InMemoryCache : Cache {
 
     override fun selectAll(): Result<List<CacheEntry>> = runCatching { cache.values.toList() }
 
+    override fun selectAsync(key: CacheEntryKey): Deferred<Result<CacheEntry?>> = scope.async {
+        runCatching {
+            cache.get(key = key)?.let { entry ->
+                if (entry.expiresAt >= Clock.System.now()) {
+                    return@runCatching entry
+                }
+            }
+
+            return@runCatching null
+        }
+    }
+
     private suspend fun expirationWorker() {
         cacheExpirations.forEach { (expiresAt, keys) ->
             if (expiresAt <= Clock.System.now()) {

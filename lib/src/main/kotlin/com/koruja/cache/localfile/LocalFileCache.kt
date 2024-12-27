@@ -83,7 +83,7 @@ class LocalFileCache(
         Json.decodeFromString<CacheEntry>(file)
     }
 
-    fun selectAsync(key: CacheEntryKey): Deferred<Result<CacheEntry>> = scope.async {
+    override fun selectAsync(key: CacheEntryKey): Deferred<Result<CacheEntry?>> = scope.async {
         runCatching {
             val file = readFileAsync(Path.of(URI.create(cachePath + key))).await()
             Json.decodeFromString<CacheEntry>(file)

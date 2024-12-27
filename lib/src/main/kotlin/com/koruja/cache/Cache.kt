@@ -10,4 +10,5 @@ interface Cache {
     fun launchInsert(entry: CacheEntry, expiresAt: Instant): Job
     fun select(key: CacheEntry.CacheEntryKey): Result<CacheEntry?>
     fun selectAll(): Result<List<CacheEntry>>
+    fun selectAsync(key: CacheEntry.CacheEntryKey): Deferred<Result<CacheEntry?>>
 }
