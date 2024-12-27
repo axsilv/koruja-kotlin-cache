@@ -8,7 +8,6 @@ import java.net.URI
 import java.nio.ByteBuffer
 import java.nio.channels.AsynchronousFileChannel
 import java.nio.file.Path
-import java.nio.file.StandardOpenOption
 import java.nio.file.StandardOpenOption.CREATE
 import java.nio.file.StandardOpenOption.READ
 import java.nio.file.StandardOpenOption.WRITE
@@ -41,13 +40,22 @@ class LocalFileCache(
         File(filePath).writeText(content)
     }
 
-    private fun readFile(filePath: Path): Deferred<String> = scope.async {
+    private fun readFileAsync(filePath: Path): Deferred<String> = scope.async {
         val channel = AsynchronousFileChannel.open(filePath, READ)
         val buffer = ByteBuffer.allocate(channel.size().toInt())
         channel.read(buffer, 0).get()
         channel.close()
         buffer.flip()
         String(buffer.array())
+    }
+
+    private fun readFileSync(filePath: Path): String {
+        val channel = AsynchronousFileChannel.open(filePath, READ)
+        val buffer = ByteBuffer.allocate(channel.size().toInt())
+        channel.read(buffer, 0).get()
+        channel.close()
+        buffer.flip()
+        return String(buffer.array())
     }
 
     override fun insert(entry: CacheEntry, expiresAt: Instant): Result<Unit> = runCatching {
@@ -70,8 +78,16 @@ class LocalFileCache(
         ).await()
     }
 
-    override fun select(key: CacheEntryKey): Result<CacheEntry?> {
-        TODO("Not yet implemented")
+    override fun select(key: CacheEntryKey): Result<CacheEntry?> = runCatching {
+        val file = readFileSync(Path.of(URI.create(cachePath + key)))
+        Json.decodeFromString<CacheEntry>(file)
+    }
+
+    fun selectAsync(key: CacheEntryKey): Deferred<Result<CacheEntry>> = scope.async {
+        runCatching {
+            val file = readFileAsync(Path.of(URI.create(cachePath + key))).await()
+            Json.decodeFromString<CacheEntry>(file)
+        }
     }
 
     override fun selectAll(): Result<List<CacheEntry>> {
