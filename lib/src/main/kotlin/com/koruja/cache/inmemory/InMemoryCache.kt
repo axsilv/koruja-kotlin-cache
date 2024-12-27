@@ -5,7 +5,6 @@ import com.koruja.cache.CacheEntry
 import com.koruja.cache.CacheEntry.CacheEntryKey
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
-import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -23,7 +22,6 @@ import kotlinx.datetime.Instant
 class InMemoryCache : Cache {
     private val cache: ConcurrentHashMap<CacheEntryKey, CacheEntry> = ConcurrentHashMap()
     private val cacheExpirations: ConcurrentHashMap<Instant, ConcurrentLinkedQueue<CacheEntryKey>> = ConcurrentHashMap()
-    private val defaultDuration: Duration = 60.seconds
     private val mutex: Mutex = Mutex()
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
