@@ -11,6 +11,8 @@ repositories {
 dependencies {
     implementation(libs.coroutines)
     implementation(libs.datetime)
+    implementation(libs.serialization.core)
+    implementation(libs.serialization.json)
 
     testImplementation(libs.kotest)
     testImplementation(libs.kotest.junit5)

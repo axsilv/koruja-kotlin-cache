@@ -45,17 +45,15 @@ class InMemoryCache : Cache {
     override fun insertAsync(
         entry: CacheEntry,
         expiresAt: Instant,
-    ): Deferred<Result<Unit>> =
-        scope.async {
-            runCatching {
-                addCacheExpirations(
-                    key = entry.id,
-                    expiresAt = expiresAt,
-                )
+    ): Deferred<Unit> = scope.async {
+        addCacheExpirations(
+            key = entry.id,
+            expiresAt = expiresAt,
+        )
 
-                cache[entry.id] = entry
-            }
-        }
+        cache[entry.id] = entry
+    }
+
 
     override fun launchInsert(
         entry: CacheEntry,
