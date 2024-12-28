@@ -6,7 +6,7 @@ import kotlinx.datetime.Instant
 
 interface Cache {
     fun insert(entry: CacheEntry, expiresAt: Instant): Result<Unit>
-    fun insertAsync(entry: CacheEntry, expiresAt: Instant): Deferred<Unit>
+    fun insertAsync(entry: CacheEntry, expiresAt: Instant): Result<Deferred<Unit>>
     fun launchInsert(entry: CacheEntry, expiresAt: Instant): Job
     fun select(key: CacheEntry.CacheEntryKey): Result<CacheEntry?>
     fun selectAll(): Result<List<CacheEntry>>

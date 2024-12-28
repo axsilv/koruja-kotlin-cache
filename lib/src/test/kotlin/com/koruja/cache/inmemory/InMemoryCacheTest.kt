@@ -40,7 +40,7 @@ class InMemoryCacheTest : BehaviorSpec({
 
                     entries().map { entry ->
                         inMemoryCache.insertAsync(entry = entry, expiresAt = entry.expiresAt)
-                    }.awaitAll()
+                    }.forEach { it.getOrNull()?.await() }
 
                     inMemoryCache.selectAll().getOrThrow().let {
                         it.size shouldBe 10

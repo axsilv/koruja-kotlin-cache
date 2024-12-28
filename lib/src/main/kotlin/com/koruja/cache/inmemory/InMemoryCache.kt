@@ -3,6 +3,7 @@ package com.koruja.cache.inmemory
 import com.koruja.cache.Cache
 import com.koruja.cache.CacheEntry
 import com.koruja.cache.CacheEntry.CacheEntryKey
+import com.koruja.cache.CacheException.CacheAlreadyPersisted
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.time.Duration.Companion.seconds
@@ -34,6 +35,10 @@ class InMemoryCache : Cache {
         expiresAt: Instant,
     ): Result<Unit> =
         runCatching {
+            select(key = entry.id).getOrNull()?.let {
+                throw CacheAlreadyPersisted()
+            }
+
             addCacheExpirations(
                 key = entry.id,
                 expiresAt = expiresAt,
@@ -45,13 +50,19 @@ class InMemoryCache : Cache {
     override fun insertAsync(
         entry: CacheEntry,
         expiresAt: Instant,
-    ): Deferred<Unit> = scope.async {
-        addCacheExpirations(
-            key = entry.id,
-            expiresAt = expiresAt,
-        )
+    ): Result<Deferred<Unit>> = runCatching {
+        scope.async {
+            selectAsync(key = entry.id).await().getOrNull()?.let {
+                throw CacheAlreadyPersisted()
+            }
 
-        cache[entry.id] = entry
+            addCacheExpirations(
+                key = entry.id,
+                expiresAt = expiresAt,
+            )
+
+            cache[entry.id] = entry
+        }
     }
 
 
@@ -61,6 +72,10 @@ class InMemoryCache : Cache {
     ): Job =
         scope.launch {
             runCatching {
+                selectAsync(key = entry.id).await().getOrNull()?.let {
+                    throw CacheAlreadyPersisted()
+                }
+
                 addCacheExpirations(
                     key = entry.id,
                     expiresAt = expiresAt,
@@ -101,18 +116,16 @@ class InMemoryCache : Cache {
     }
 
     private suspend fun expirationWorker() {
-        cacheExpirations.forEach { (expiresAt, keys) ->
-            if (expiresAt <= Clock.System.now()) {
-                mutex.withLock {
-                    keys.forEach { cache.remove(it) }
+        while (true) {
+            cacheExpirations.forEach { (expiresAt, keys) ->
+                if (expiresAt <= Clock.System.now()) {
+                    mutex.withLock {
+                        keys.forEach { cache.remove(it) }
 
-                    cacheExpirations.remove(expiresAt)
+                        cacheExpirations.remove(expiresAt)
+                    }
                 }
             }
         }
-
-        delay(1.seconds)
-
-        expirationWorker()
     }
 }
