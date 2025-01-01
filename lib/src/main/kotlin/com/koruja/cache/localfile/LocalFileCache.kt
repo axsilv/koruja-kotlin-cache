@@ -30,7 +30,7 @@ import kotlinx.datetime.Instant
 import kotlinx.serialization.json.Json
 
 class LocalFileCache(
-    properties: LocalFileCacheProperties
+    private val properties: LocalFileCacheProperties
 ) : Cache {
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -40,7 +40,7 @@ class LocalFileCache(
     private val mutex: Mutex = Mutex()
 
     init {
-        if (properties.keepExpiredCache) {
+        if (properties.deleteExpiredCache) {
             scope.launch { expirationWorker() }
         }
     }
@@ -86,10 +86,12 @@ class LocalFileCache(
             throw CacheAlreadyPersisted()
         }
 
-        writeFileSync(
-            filePath = expiresFilePath(expiresAt = expiresAt, entry = entry),
-            content = expiresFileContent(entry = entry, expiresAt = expiresAt)
-        )
+        if (properties.deleteExpiredCache) {
+            writeFileSync(
+                filePath = expiresFilePath(expiresAt = expiresAt, entry = entry),
+                content = expiresFileContent(entry = entry, expiresAt = expiresAt)
+            )
+        }
 
         writeFileSync(
             filePath = cachePath + entry.id,
@@ -114,10 +116,12 @@ class LocalFileCache(
             throw CacheAlreadyPersisted()
         }
 
-        writeFileSync(
-            filePath = expiresFilePath(expiresAt = expiresAt, entry = entry),
-            content = expiresFileContent(entry = entry, expiresAt = expiresAt)
-        )
+        if (properties.deleteExpiredCache) {
+            writeFileSync(
+                filePath = expiresFilePath(expiresAt = expiresAt, entry = entry),
+                content = expiresFileContent(entry = entry, expiresAt = expiresAt)
+            )
+        }
 
         val deferred = writeFileAsync(
             filePath = Path.of(URI.create(cachePath + entry.id)),
@@ -135,10 +139,12 @@ class LocalFileCache(
             throw CacheAlreadyPersisted()
         }
 
-        writeFileSync(
-            filePath = expiresFilePath(expiresAt = expiresAt, entry = entry),
-            content = expiresFileContent(entry = entry, expiresAt = expiresAt)
-        )
+        if (properties.deleteExpiredCache) {
+            writeFileSync(
+                filePath = expiresFilePath(expiresAt = expiresAt, entry = entry),
+                content = expiresFileContent(entry = entry, expiresAt = expiresAt)
+            )
+        }
 
         launchWriteFile(
             filePath = Path.of(URI.create(cachePath + entry.id)),
