@@ -8,7 +8,6 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import kotlin.time.Duration.Companion.seconds
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -28,9 +27,7 @@ class InMemoryCacheTest : BehaviorSpec({
                         }
                     }.joinAll()
 
-                    inMemoryCache.selectAll().getOrThrow().let {
-                        it.size shouldBe 10
-                    }
+                    inMemoryCache.selectAll().size shouldBe 10
                 }
             }
 
@@ -40,11 +37,9 @@ class InMemoryCacheTest : BehaviorSpec({
 
                     entries().map { entry ->
                         inMemoryCache.insertAsync(entry = entry, expiresAt = entry.expiresAt)
-                    }.forEach { it.getOrNull()?.await() }
+                    }.forEach { it.await() }
 
-                    inMemoryCache.selectAll().getOrThrow().let {
-                        it.size shouldBe 10
-                    }
+                    inMemoryCache.selectAll().size shouldBe 10
                 }
             }
 
@@ -56,9 +51,7 @@ class InMemoryCacheTest : BehaviorSpec({
                         inMemoryCache.launchInsert(entry = entry, expiresAt = entry.expiresAt)
                     }.joinAll()
 
-                    inMemoryCache.selectAll().getOrThrow().let {
-                        it.size shouldBe 10
-                    }
+                    inMemoryCache.selectAll().size shouldBe 10
                 }
             }
 
@@ -86,17 +79,17 @@ class InMemoryCacheTest : BehaviorSpec({
                         expiresAt = Clock.System.now().plus(5.seconds),
                     )
 
-                    inMemoryCache.select(CacheEntryKey("key-test")).getOrNull().shouldNotBeNull()
-                    inMemoryCache.select(CacheEntryKey("key-test2")).getOrNull().shouldNotBeNull()
+                    inMemoryCache.select(CacheEntryKey("key-test")).shouldNotBeNull()
+                    inMemoryCache.select(CacheEntryKey("key-test2")).shouldNotBeNull()
 
                     delay(3.seconds)
 
-                    inMemoryCache.select(CacheEntryKey("key-test")).getOrNull().shouldBeNull()
-                    inMemoryCache.select(CacheEntryKey("key-test2")).getOrNull().shouldNotBeNull()
+                    inMemoryCache.select(CacheEntryKey("key-test")).shouldBeNull()
+                    inMemoryCache.select(CacheEntryKey("key-test2")).shouldNotBeNull()
 
                     delay(3.seconds)
 
-                    inMemoryCache.select(CacheEntryKey("key-test2")).getOrNull().shouldBeNull()
+                    inMemoryCache.select(CacheEntryKey("key-test2")).shouldBeNull()
                 }
             }
         }

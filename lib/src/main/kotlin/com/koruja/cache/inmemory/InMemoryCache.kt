@@ -6,14 +6,12 @@ import com.koruja.cache.CacheEntry.CacheEntryKey
 import com.koruja.cache.CacheException.CacheAlreadyPersisted
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
-import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -30,89 +28,95 @@ class InMemoryCache : Cache {
         scope.launch { expirationWorker() }
     }
 
-    override fun insert(
+    override suspend fun insert(
         entry: CacheEntry,
         expiresAt: Instant,
-    ): Result<Unit> =
-        runCatching {
-            select(key = entry.id).getOrNull()?.let {
-                throw CacheAlreadyPersisted()
-            }
-
-            addCacheExpirations(
-                key = entry.id,
-                expiresAt = expiresAt,
-            )
-
-            cache[entry.id] = entry
+    ) {
+        select(key = entry.id)?.let {
+            throw CacheAlreadyPersisted()
         }
+
+        addCacheExpirations(
+            key = entry.id,
+            expiresAt = expiresAt,
+        )
+
+        cache[entry.id] = entry
+    }
 
     override fun insertAsync(
         entry: CacheEntry,
         expiresAt: Instant,
-    ): Result<Deferred<Unit>> = runCatching {
-        scope.async {
-            selectAsync(key = entry.id).await().getOrNull()?.let {
-                throw CacheAlreadyPersisted()
-            }
-
-            addCacheExpirations(
-                key = entry.id,
-                expiresAt = expiresAt,
-            )
-
-            cache[entry.id] = entry
+    ): Deferred<Unit> = scope.async {
+        selectAsync(key = entry.id).await()?.let {
+            throw CacheAlreadyPersisted()
         }
+
+        addCacheExpirations(
+            key = entry.id,
+            expiresAt = expiresAt,
+        )
+
+        cache[entry.id] = entry
     }
 
 
     override fun launchInsert(
         entry: CacheEntry,
         expiresAt: Instant,
-    ): Job =
-        scope.launch {
-            runCatching {
-                selectAsync(key = entry.id).await().getOrNull()?.let {
-                    throw CacheAlreadyPersisted()
-                }
-
-                addCacheExpirations(
-                    key = entry.id,
-                    expiresAt = expiresAt,
-                )
-
-                cache[entry.id] = entry
-            }
+    ): Job = scope.launch {
+        selectAsync(key = entry.id).await()?.let {
+            throw CacheAlreadyPersisted()
         }
 
-    private fun addCacheExpirations(
+        addCacheExpirations(
+            key = entry.id,
+            expiresAt = expiresAt,
+        )
+
+        cache[entry.id] = entry
+    }
+
+
+    private suspend fun addCacheExpirations(
         key: CacheEntryKey,
         expiresAt: Instant,
-    ) = cacheExpirations[expiresAt]?.add(key)
+    ) {
+        mutex.withLock {
+            val entry = cacheExpirations[expiresAt]
 
-    override fun select(key: CacheEntryKey): Result<CacheEntry?> =
-        runCatching {
-            cache.get(key = key)?.let { entry ->
-                if (entry.expiresAt >= Clock.System.now()) {
-                    return@runCatching entry
-                }
+            if (entry == null) {
+                cacheExpirations[expiresAt] = ConcurrentLinkedQueue<CacheEntryKey>(listOf(key))
+            } else {
+                entry.add(key)
             }
+        }
+    }
 
-            return@runCatching null
+    override fun select(key: CacheEntryKey): CacheEntry? {
+        cache.get(key = key)?.let { entry ->
+            if (entry.expiresAt >= Clock.System.now()) {
+                return entry
+            }
         }
 
-    override fun selectAll(): Result<List<CacheEntry>> = runCatching { cache.values.toList() }
+        return null
+    }
 
-    override fun selectAsync(key: CacheEntryKey): Deferred<Result<CacheEntry?>> = scope.async {
-        runCatching {
-            cache.get(key = key)?.let { entry ->
-                if (entry.expiresAt >= Clock.System.now()) {
-                    return@runCatching entry
-                }
+    override fun selectAll(): List<CacheEntry> = cache.values.toList()
+
+    override fun selectAsync(key: CacheEntryKey): Deferred<CacheEntry?> = scope.async {
+        cache.get(key = key)?.let { entry ->
+            if (entry.expiresAt >= Clock.System.now()) {
+                return@async entry
             }
-
-            return@runCatching null
         }
+
+        return@async null
+    }
+
+    override suspend fun selectAllAsync(): Deferred<List<CacheEntry>> = scope.async {
+        cache.values.toList()
     }
 
     private suspend fun expirationWorker() {
