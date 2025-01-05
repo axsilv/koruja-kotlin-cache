@@ -44,7 +44,7 @@ class InMemoryCache : Cache {
         cache[entry.id] = entry
     }
 
-    override fun insertAsync(
+    override suspend fun insertAsync(
         entry: CacheEntry,
         expiresAt: Instant,
     ): Deferred<Unit> = scope.async {
@@ -61,7 +61,7 @@ class InMemoryCache : Cache {
     }
 
 
-    override fun launchInsert(
+    override suspend fun launchInsert(
         entry: CacheEntry,
         expiresAt: Instant,
     ): Job = scope.launch {
@@ -93,7 +93,7 @@ class InMemoryCache : Cache {
         }
     }
 
-    override fun select(key: CacheEntryKey): CacheEntry? {
+    override suspend fun select(key: CacheEntryKey): CacheEntry? {
         cache.get(key = key)?.let { entry ->
             if (entry.expiresAt >= Clock.System.now()) {
                 return entry
@@ -103,9 +103,9 @@ class InMemoryCache : Cache {
         return null
     }
 
-    override fun selectAll(): List<CacheEntry> = cache.values.toList()
+    override suspend fun selectAll(): List<CacheEntry> = cache.values.toList()
 
-    override fun selectAsync(key: CacheEntryKey): Deferred<CacheEntry?> = scope.async {
+    override suspend fun selectAsync(key: CacheEntryKey): Deferred<CacheEntry?> = scope.async {
         cache.get(key = key)?.let { entry ->
             if (entry.expiresAt >= Clock.System.now()) {
                 return@async entry
@@ -117,6 +117,10 @@ class InMemoryCache : Cache {
 
     override suspend fun selectAllAsync(): Deferred<List<CacheEntry>> = scope.async {
         cache.values.toList()
+    }
+
+    override suspend fun cleanAll(): Deferred<Unit> {
+        TODO("Not yet implemented")
     }
 
     private suspend fun expirationWorker() {

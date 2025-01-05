@@ -6,7 +6,7 @@ import com.koruja.cache.CacheEntry.CacheEntryKey
 import com.koruja.cache.CacheException.CacheAlreadyPersisted
 import com.koruja.cache.inmemory.InMemoryCache
 import java.io.File
-import java.net.URI
+import java.io.FileNotFoundException
 import java.nio.ByteBuffer
 import java.nio.channels.AsynchronousFileChannel
 import java.nio.file.Files
@@ -34,12 +34,22 @@ class LocalFileCache(
 ) : Cache {
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
-    private val cachePath: String = "${properties.baseDir}${File.separator}cache${File.separator}"
-    private val expirationPath: String = "${properties.baseDir}${File.separator}expirations${File.separator}"
+    private val cachePath: Path =
+        Paths.get("", *properties.baseDir.toTypedArray(), "cache")
+    private val expirationPath: Path =
+        Paths.get("", *properties.baseDir.toTypedArray(), "expirations")
     private val inMemoryCache: InMemoryCache = InMemoryCache()
     private val mutex: Mutex = Mutex()
 
     init {
+        if (Files.notExists(cachePath)) {
+            Files.createDirectory(cachePath)
+        }
+
+        if (Files.notExists(cachePath)) {
+            Files.createDirectory(expirationPath)
+        }
+
         if (properties.deleteExpiredCache) {
             scope.launch { expirationWorker() }
         }
@@ -53,16 +63,24 @@ class LocalFileCache(
         asynchronousWriter(filePath = filePath, content = content)
     }
 
-    private fun asynchronousWriter(filePath: Path, content: String) {
-        val channel = AsynchronousFileChannel.open(filePath, WRITE, CREATE)
-        val buffer = ByteBuffer.wrap(content.toByteArray())
-        channel.write(buffer, 0).get()
-        channel.close()
+    private suspend fun asynchronousWriter(filePath: Path, content: String) = try {
+        mutex.lock(filePath)
+
+        scope.async {
+            if (Files.notExists(filePath)) {
+                Files.createFile(filePath)
+            }
+
+            val channel = AsynchronousFileChannel.open(filePath, WRITE, CREATE)
+            val buffer = ByteBuffer.wrap(content.toByteArray())
+            channel.write(buffer, 0).get()
+            channel.close()
+        }.await()
+
+    } finally {
+        mutex.unlock(filePath)
     }
 
-    private fun writeFileSync(filePath: String, content: String) {
-        File(filePath).writeText(content)
-    }
 
     private fun readFileAsync(filePath: Path): Deferred<String> = scope.async {
         asynchronousReader(filePath = filePath)
@@ -82,21 +100,12 @@ class LocalFileCache(
     }
 
     override suspend fun insert(entry: CacheEntry, expiresAt: Instant) {
-        select(key = entry.id)?.let {
-            throw CacheAlreadyPersisted()
-        }
+        prepareCache(entry, expiresAt)
 
-        if (properties.deleteExpiredCache) {
-            writeFileSync(
-                filePath = expiresFilePath(expiresAt = expiresAt, entry = entry),
-                content = expiresFileContent(entry = entry, expiresAt = expiresAt)
-            )
-        }
-
-        writeFileSync(
-            filePath = cachePath + entry.id,
+        writeFileAsync(
+            filePath = cachePath.resolve("${entry.id}.txt"),
             content = Json.encodeToString(entry)
-        )
+        ).await()
 
         inMemoryCache.launchInsert(entry = entry, expiresAt = expiresAt)
     }
@@ -108,23 +117,21 @@ class LocalFileCache(
         )
     )
 
-    private fun expiresFilePath(expiresAt: Instant, entry: CacheEntry) =
-        "$expirationPath${File.separator}$expiresAt${File.separator}${entry.id}"
+    private fun expiresFilePath(expiresAt: Instant, entry: CacheEntry): Path {
+        val expiresFolder = expirationPath.resolve(expiresAt.toString().replace(":", "_"))
 
-    override fun insertAsync(entry: CacheEntry, expiresAt: Instant): Deferred<Unit> {
-        select(key = entry.id)?.let {
-            throw CacheAlreadyPersisted()
+        if (Files.notExists(expiresFolder)) {
+            Files.createDirectory(expiresFolder)
         }
 
-        if (properties.deleteExpiredCache) {
-            writeFileSync(
-                filePath = expiresFilePath(expiresAt = expiresAt, entry = entry),
-                content = expiresFileContent(entry = entry, expiresAt = expiresAt)
-            )
-        }
+        return expiresFolder.resolve("${entry.id}.txt")
+    }
+
+    override suspend fun insertAsync(entry: CacheEntry, expiresAt: Instant): Deferred<Unit> {
+        prepareCache(entry, expiresAt)
 
         val deferred = writeFileAsync(
-            filePath = Path.of(URI.create(cachePath + entry.id)),
+            filePath = cachePath.resolve(entry.id.toString()),
             content = Json.encodeToString(entry)
         )
 
@@ -134,68 +141,88 @@ class LocalFileCache(
     }
 
 
-    override fun launchInsert(entry: CacheEntry, expiresAt: Instant): Job = scope.launch {
-        select(key = entry.id)?.let {
-            throw CacheAlreadyPersisted()
-        }
-
-        if (properties.deleteExpiredCache) {
-            writeFileSync(
-                filePath = expiresFilePath(expiresAt = expiresAt, entry = entry),
-                content = expiresFileContent(entry = entry, expiresAt = expiresAt)
-            )
-        }
+    override suspend fun launchInsert(entry: CacheEntry, expiresAt: Instant): Job = scope.launch {
+        prepareCache(entry, expiresAt)
 
         launchWriteFile(
-            filePath = Path.of(URI.create(cachePath + entry.id)),
+            filePath = cachePath.resolve(entry.id.toString()),
             content = Json.encodeToString(entry)
         )
 
         inMemoryCache.launchInsert(entry = entry, expiresAt = expiresAt)
     }
 
-    override fun select(key: CacheEntryKey): CacheEntry? {
+    private suspend fun LocalFileCache.prepareCache(
+        entry: CacheEntry,
+        expiresAt: Instant
+    ) {
+        select(key = entry.id)?.let {
+            throw CacheAlreadyPersisted()
+        }
+
+        if (properties.deleteExpiredCache) {
+            writeFileAsync(
+                filePath = expiresFilePath(expiresAt = expiresAt, entry = entry),
+                content = expiresFileContent(entry = entry, expiresAt = expiresAt)
+            ).await()
+        }
+    }
+
+    override suspend fun select(key: CacheEntryKey): CacheEntry? {
         val memoryEntry = inMemoryCache.select(key = key)
 
         if (memoryEntry != null) {
             return memoryEntry
         }
 
-        val file = readFileSync(Path.of(URI.create(cachePath + key)))
+        val filePath = cachePath.resolve("$key.txt")
+        if (Files.notExists(filePath)) {
+            return null
+        }
+
+        val file = readFileSync(filePath)
         return Json.decodeFromString<CacheEntry>(file)
     }
 
-    override fun selectAsync(key: CacheEntryKey): Deferred<CacheEntry?> = scope.async {
-        val file = readFileAsync(Path.of(URI.create(cachePath + key))).await()
+    override suspend fun selectAsync(key: CacheEntryKey): Deferred<CacheEntry?> = scope.async {
+        val file = readFileAsync(cachePath.resolve(key.toString())).await()
         Json.decodeFromString<CacheEntry>(file)
     }
 
-    override fun selectAll(): List<CacheEntry> = readAllFilesSync(cachePath).map { file ->
-        val lines = file.readText()
-        Json.decodeFromString<CacheEntry>(lines)
+    override suspend fun selectAll(): List<CacheEntry> = readAllFilesSync().map { file ->
+        try {
+            val lines = file.readText()
+            return listOf(Json.decodeFromString<CacheEntry>(lines))
+        } catch (e: FileNotFoundException) {
+            return emptyList()
+        }
     }
 
     override suspend fun selectAllAsync(): Deferred<List<CacheEntry>> = scope.async {
-        readAllFilesAsync(cachePath).await()
+        readAllFilesAsync().await()
             .map { file ->
                 val lines = file.readText()
                 Json.decodeFromString<CacheEntry>(lines)
             }
     }
 
-    private fun readAllFilesAsync(folderPath: String): Deferred<List<File>> = scope.async {
-        readAllFiles(folderPath).toList()
+    override suspend fun cleanAll(): Deferred<Unit> = scope.async {
+        Files.deleteIfExists(cachePath)
+        Files.deleteIfExists(expirationPath)
+    }
+
+    private fun readAllFilesAsync(): Deferred<List<File>> = scope.async {
+        readAllFiles().toList()
     }
 
 
-    private fun readAllFilesSync(folderPath: String): List<File> = readAllFiles(folderPath).toList()
+    private fun readAllFilesSync(): List<File> = readAllFiles().toList()
 
 
-    private fun readAllFiles(folderPath: String): MutableList<File> {
-        val folder = Paths.get(folderPath)
+    private fun readAllFiles(): MutableList<File> {
         val fileList = mutableListOf<File>()
 
-        Files.walk(folder).use { stream ->
+        Files.walk(cachePath).use { stream ->
             stream.filter {
                 Files.isRegularFile(it)
             }.forEach { path ->
@@ -209,16 +236,16 @@ class LocalFileCache(
     private suspend fun expirationWorker() {
         while (true) {
             mutex.withLock {
-                File(expirationPath).listFiles()
+                expirationPath.toFile().listFiles()
                     ?.filter { it.isDirectory }
                     ?.map { folder ->
                         scope.async {
-                            val folderInstant = Instant.parse(folder.name)
+                            val folderInstant = Instant.parse(folder.name.replace("_", ":"))
                             if (folderInstant <= Clock.System.now()) {
                                 folder?.listFiles()
                                     ?.filter { it.isFile }
                                     ?.forEach {
-                                        File(cachePath + it.name).deleteRecursively()
+                                        cachePath.resolve(it.name).toFile().deleteRecursively()
                                     }
 
                                 folder.deleteRecursively()
