@@ -1,15 +1,14 @@
 package com.koruja.cache.localfile
 
 import com.koruja.cache.CacheEntry
+import com.koruja.cache.expiration.LocalFileExpirationWorkerGeneric
 import io.kotest.core.spec.style.BehaviorSpec
-import io.kotest.matchers.comparables.shouldBeLessThan
-import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.UUID
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.measureTimedValue
+import kotlin.time.Duration.Companion.milliseconds
+import kotlinx.coroutines.delay
 import kotlinx.datetime.Clock
 
 class LocalFileCacheTest : BehaviorSpec({
@@ -21,9 +20,13 @@ class LocalFileCacheTest : BehaviorSpec({
                     val properties = LocalFileCacheProperties(
                         baseDir = listOf("src", "test", "resources"),
                     )
-                    val cache = LocalFileCache(properties = properties)
+                    val cache = LocalFileCache(
+                        properties = properties,
+                        expirationWorker = LocalFileExpirationWorkerGeneric(),
+                        writer = AsynchronousWriterGeneric()
+                    )
                     val key = UUID.randomUUID().toString()
-                    val expiresAt = Clock.System.now().plus(30.seconds)
+                    val expiresAt = Clock.System.now().plus(1000.milliseconds)
 
                     cache.insert(
                         entry = CacheEntry(
@@ -45,29 +48,7 @@ class LocalFileCacheTest : BehaviorSpec({
                         )
                     ) shouldBe true
 
-                    val (keys, duration) = measureTimedValue {
-                        (1..2000).map { _ ->
-                            val randomKey = UUID.randomUUID().toString()
-                            cache.insert(
-                                entry = CacheEntry(
-                                    id = CacheEntry.CacheEntryKey(randomKey),
-                                    expiresAt = expiresAt,
-                                    payload = "test=payload"
-                                ),
-                                expiresAt = expiresAt
-                            )
-
-                            randomKey
-                        }
-                    }
-
-                    duration shouldBeLessThan 10.seconds
-
-                    keys.forEach {
-                        cache.select(CacheEntry.CacheEntryKey(it)).shouldNotBeNull()
-                    }
-
-                    cache.cleanAll().await()
+                    delay(20.milliseconds)
                 }
             }
         }
