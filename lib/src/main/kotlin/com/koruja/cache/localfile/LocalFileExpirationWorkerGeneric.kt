@@ -1,5 +1,6 @@
-package com.koruja.cache.expiration
+package com.koruja.cache.localfile
 
+import com.koruja.cache.LocalFileExpirationWorker
 import java.nio.file.Path
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async

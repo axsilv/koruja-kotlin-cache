@@ -1,13 +1,13 @@
 package com.koruja.cache.localfile
 
 import com.koruja.cache.CacheEntry
-import com.koruja.cache.expiration.LocalFileExpirationWorkerGeneric
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.shouldBe
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.UUID
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.delay
 import kotlinx.datetime.Clock
 
@@ -23,14 +23,16 @@ class LocalFileCacheTest : BehaviorSpec({
                     val cache = LocalFileCache(
                         properties = properties,
                         expirationWorker = LocalFileExpirationWorkerGeneric(),
-                        writer = AsynchronousWriterGeneric()
+                        writer = AsynchronousWriterGeneric(),
+                        asynchronousReader = AsynchronousReaderGeneric(),
+                        reader = ReaderGeneric()
                     )
                     val key = UUID.randomUUID().toString()
                     val expiresAt = Clock.System.now().plus(1000.milliseconds)
 
                     cache.insert(
                         entry = CacheEntry(
-                            id = CacheEntry.CacheEntryKey(key),
+                            key = CacheEntry.CacheEntryKey(key),
                             expiresAt = expiresAt,
                             payload = "test=payload"
                         ),
@@ -48,7 +50,7 @@ class LocalFileCacheTest : BehaviorSpec({
                         )
                     ) shouldBe true
 
-                    delay(20.milliseconds)
+                    delay(10.seconds)
                 }
             }
         }

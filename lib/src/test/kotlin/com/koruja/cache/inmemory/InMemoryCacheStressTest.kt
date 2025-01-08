@@ -16,13 +16,13 @@ class InMemoryCacheStressTest : BehaviorSpec({
             `when`("Expiration worker runs a lot of data") {
                 then("Should not crash or leak") {
                     val cases = (1..10000000).toList()
-                    val cache = InMemoryCache()
+                    val cache = InMemoryCache(expirationDecider = InMemoryExpirationDeciderGeneric())
 
                     cases.forEach { _ ->
                         val expiresAt = 2
                         cache.launchInsert(
                             CacheEntry(
-                                id = CacheEntry.CacheEntryKey(UUID.randomUUID().toString()),
+                                key = CacheEntry.CacheEntryKey(UUID.randomUUID().toString()),
                                 payload = "Stress test",
                                 expiresAt = instant(expiresAt)
                             ),
@@ -34,7 +34,7 @@ class InMemoryCacheStressTest : BehaviorSpec({
                         val expiresAt = 3
                         cache.insertAsync(
                             CacheEntry(
-                                id = CacheEntry.CacheEntryKey(UUID.randomUUID().toString()),
+                                key = CacheEntry.CacheEntryKey(UUID.randomUUID().toString()),
                                 payload = "Stress test",
                                 expiresAt = instant(expiresAt)
                             ),
@@ -46,7 +46,7 @@ class InMemoryCacheStressTest : BehaviorSpec({
                         val expiresAt = 4
                         cache.insert(
                             CacheEntry(
-                                id = CacheEntry.CacheEntryKey(UUID.randomUUID().toString()),
+                                key = CacheEntry.CacheEntryKey(UUID.randomUUID().toString()),
                                 payload = "Stress test",
                                 expiresAt = instant(expiresAt)
                             ),
@@ -74,14 +74,14 @@ class InMemoryCacheStressTest : BehaviorSpec({
             `when`("Multiple inserts") {
                 then("Measure times") {
                     val cases = (1..10000000).toList()
-                    val cache = InMemoryCache()
+                    val cache = InMemoryCache(expirationDecider = InMemoryExpirationDeciderGeneric())
 
                     val duration = measureTimeMillis {
                         cases.forEach { _ ->
                             val expiresAt = 2
                             cache.insert(
                                 CacheEntry(
-                                    id = CacheEntry.CacheEntryKey(UUID.randomUUID().toString()),
+                                    key = CacheEntry.CacheEntryKey(UUID.randomUUID().toString()),
                                     payload = "Stress test",
                                     expiresAt = instant(expiresAt)
                                 ),

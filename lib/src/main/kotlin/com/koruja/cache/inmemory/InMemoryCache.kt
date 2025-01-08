@@ -4,6 +4,7 @@ import com.koruja.cache.Cache
 import com.koruja.cache.CacheEntry
 import com.koruja.cache.CacheEntry.CacheEntryKey
 import com.koruja.cache.CacheException.CacheAlreadyPersisted
+import com.koruja.cache.InMemoryExpirationDecider
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlinx.coroutines.CoroutineScope
@@ -18,7 +19,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 
-class InMemoryCache : Cache {
+class InMemoryCache(
+    private val expirationDecider: InMemoryExpirationDecider
+) : Cache {
     private val cache: ConcurrentHashMap<CacheEntryKey, CacheEntry> = ConcurrentHashMap()
     private val cacheExpirations: ConcurrentHashMap<Instant, ConcurrentLinkedQueue<CacheEntryKey>> = ConcurrentHashMap()
     private val mutex: Mutex = Mutex()
@@ -32,32 +35,32 @@ class InMemoryCache : Cache {
         entry: CacheEntry,
         expiresAt: Instant,
     ) {
-        select(key = entry.id)?.let {
+        select(key = entry.key)?.let {
             throw CacheAlreadyPersisted()
         }
 
         addCacheExpirations(
-            key = entry.id,
+            key = entry.key,
             expiresAt = expiresAt,
         )
 
-        cache[entry.id] = entry
+        cache[entry.key] = entry
     }
 
     override suspend fun insertAsync(
         entry: CacheEntry,
         expiresAt: Instant,
     ): Deferred<Unit> = scope.async {
-        selectAsync(key = entry.id).await()?.let {
+        selectAsync(key = entry.key).await()?.let {
             throw CacheAlreadyPersisted()
         }
 
         addCacheExpirations(
-            key = entry.id,
+            key = entry.key,
             expiresAt = expiresAt,
         )
 
-        cache[entry.id] = entry
+        cache[entry.key] = entry
     }
 
 
@@ -65,16 +68,16 @@ class InMemoryCache : Cache {
         entry: CacheEntry,
         expiresAt: Instant,
     ): Job = scope.launch {
-        selectAsync(key = entry.id).await()?.let {
+        selectAsync(key = entry.key).await()?.let {
             throw CacheAlreadyPersisted()
         }
 
         addCacheExpirations(
-            key = entry.id,
+            key = entry.key,
             expiresAt = expiresAt,
         )
 
-        cache[entry.id] = entry
+        cache[entry.key] = entry
     }
 
 
@@ -123,17 +126,34 @@ class InMemoryCache : Cache {
         TODO("Not yet implemented")
     }
 
-    private suspend fun expirationWorker() {
+    private fun expirationWorker() {
         while (true) {
-            cacheExpirations.forEach { (expiresAt, keys) ->
-                if (expiresAt <= Clock.System.now()) {
-                    mutex.withLock {
-                        keys.forEach { cache.remove(it) }
+            cacheExpirations.toList()
+                .parallelStream()
+                .map { (expiresAt, keys) ->
+                    scope.async {
+                        val shouldRemove = expirationDecider.shouldRemove(
+                            keys = keys,
+                            expiresAt = expiresAt
+                        )
 
-                        cacheExpirations.remove(expiresAt)
+                        if (shouldRemove) {
+                            delete(keys = keys, expiresAt = expiresAt)
+                        }
                     }
                 }
-            }
         }
+    }
+
+    private fun delete(
+        keys: ConcurrentLinkedQueue<CacheEntryKey>,
+        expiresAt: Instant
+    ): ConcurrentLinkedQueue<CacheEntryKey>? {
+        keys.parallelStream()
+            .map {
+                scope.async { cache.remove(it) }
+            }
+
+        return cacheExpirations.remove(expiresAt)
     }
 }

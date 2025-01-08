@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class CacheEntry(
-    val id: CacheEntryKey,
+    val key: CacheEntryKey,
     val expiresAt: Instant,
     val payload: String,
 ) {

@@ -19,7 +19,7 @@ class InMemoryCacheTest : BehaviorSpec({
         given("N concurrent insert operations") {
             `when`("Insert") {
                 then("Should contain all elements") {
-                    val inMemoryCache = InMemoryCache()
+                    val inMemoryCache = InMemoryCache(expirationDecider = InMemoryExpirationDeciderGeneric())
 
                     entries().map { entry ->
                         launch {
@@ -33,7 +33,7 @@ class InMemoryCacheTest : BehaviorSpec({
 
             `when`("Insert Async") {
                 then("Should contain all elements") {
-                    val inMemoryCache = InMemoryCache()
+                    val inMemoryCache = InMemoryCache(expirationDecider = InMemoryExpirationDeciderGeneric())
 
                     entries().map { entry ->
                         inMemoryCache.insertAsync(entry = entry, expiresAt = entry.expiresAt)
@@ -45,7 +45,7 @@ class InMemoryCacheTest : BehaviorSpec({
 
             `when`("Launch Insert") {
                 then("Should contain all elements") {
-                    val inMemoryCache = InMemoryCache()
+                    val inMemoryCache = InMemoryCache(expirationDecider = InMemoryExpirationDeciderGeneric())
 
                     entries().map { entry ->
                         inMemoryCache.launchInsert(entry = entry, expiresAt = entry.expiresAt)
@@ -57,12 +57,12 @@ class InMemoryCacheTest : BehaviorSpec({
 
             `when`("Delete") {
                 then("Should remove by expiration") {
-                    val inMemoryCache = InMemoryCache()
+                    val inMemoryCache = InMemoryCache(expirationDecider = InMemoryExpirationDeciderGeneric())
 
                     inMemoryCache.insert(
                         entry =
                             CacheEntry(
-                                id = CacheEntryKey("key-test"),
+                                key = CacheEntryKey("key-test"),
                                 payload = "payload test",
                                 expiresAt = Clock.System.now().plus(2.seconds),
                             ),
@@ -72,7 +72,7 @@ class InMemoryCacheTest : BehaviorSpec({
                     inMemoryCache.insert(
                         entry =
                             CacheEntry(
-                                id = CacheEntryKey("key-test2"),
+                                key = CacheEntryKey("key-test2"),
                                 payload = "payload test 2",
                                 expiresAt = Clock.System.now().plus(5.seconds),
                             ),

@@ -4,16 +4,14 @@ import com.koruja.cache.Cache
 import com.koruja.cache.CacheEntry
 import com.koruja.cache.CacheEntry.CacheEntryKey
 import com.koruja.cache.CacheException.CacheAlreadyPersisted
-import com.koruja.cache.expiration.LocalFileExpirationWorker
+import com.koruja.cache.LocalFileExpirationWorker
 import com.koruja.cache.inmemory.InMemoryCache
+import com.koruja.cache.inmemory.InMemoryExpirationDeciderGeneric
 import java.io.File
 import java.io.FileNotFoundException
-import java.nio.ByteBuffer
-import java.nio.channels.AsynchronousFileChannel
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
-import java.nio.file.StandardOpenOption.READ
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -28,7 +26,9 @@ import kotlinx.serialization.json.Json
 class LocalFileCache(
     private val properties: LocalFileCacheProperties,
     private val expirationWorker: LocalFileExpirationWorker,
-    private val writer: AsynchronousWriter
+    private val writer: AsynchronousWriter,
+    private val asynchronousReader: AsynchronousReader,
+    private val reader: Reader
 ) : Cache {
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -36,7 +36,7 @@ class LocalFileCache(
         Paths.get("", *properties.baseDir.toTypedArray(), "cache")
     private val expirationPath: Path =
         Paths.get("", *properties.baseDir.toTypedArray(), "expirations")
-    private val inMemoryCache: InMemoryCache = InMemoryCache()
+    private val inMemoryCache: InMemoryCache = InMemoryCache(expirationDecider = InMemoryExpirationDeciderGeneric())
     private val mutex: Mutex = Mutex()
 
     init {
@@ -73,24 +73,18 @@ class LocalFileCache(
         asynchronousReader(filePath = filePath)
     }
 
-    private fun readFileSync(filePath: Path): String {
-        return asynchronousReader(filePath = filePath)
-    }
+    private fun readFileSync(filePath: Path): String = reader.read(filePath = filePath)
 
-    private fun asynchronousReader(filePath: Path): String {
-        val channel = AsynchronousFileChannel.open(filePath, READ)
-        val buffer = ByteBuffer.allocate(channel.size().toInt())
-        channel.read(buffer, 0).get()
-        channel.close()
-        buffer.flip()
-        return String(buffer.array())
-    }
+    private suspend fun asynchronousReader(filePath: Path): String = asynchronousReader.read(
+        filePath = filePath,
+        scope = scope
+    ).await()
 
     override suspend fun insert(entry: CacheEntry, expiresAt: Instant) {
         prepareCache(entry, expiresAt)
 
         writeFileAsync(
-            filePath = cachePath.resolve("${entry.id}.txt"),
+            filePath = cachePath.resolve("${entry.key}.txt"),
             content = Json.encodeToString(entry)
         ).await()
 
@@ -99,7 +93,7 @@ class LocalFileCache(
 
     private fun expiresFileContent(entry: CacheEntry, expiresAt: Instant) = Json.encodeToString(
         mapOf(
-            "key" to entry.id.toString(),
+            "key" to entry.key.toString(),
             "expiresAt" to expiresAt.toString()
         )
     )
@@ -111,14 +105,14 @@ class LocalFileCache(
             Files.createDirectory(expiresFolder)
         }
 
-        return expiresFolder.resolve("${entry.id}.txt")
+        return expiresFolder.resolve("${entry.key}.txt")
     }
 
     override suspend fun insertAsync(entry: CacheEntry, expiresAt: Instant): Deferred<Unit> {
         prepareCache(entry, expiresAt)
 
         val deferred = writeFileAsync(
-            filePath = cachePath.resolve(entry.id.toString()),
+            filePath = cachePath.resolve(entry.key.toString()),
             content = Json.encodeToString(entry)
         )
 
@@ -132,7 +126,7 @@ class LocalFileCache(
         prepareCache(entry, expiresAt)
 
         launchWriteFile(
-            filePath = cachePath.resolve(entry.id.toString()),
+            filePath = cachePath.resolve(entry.key.toString()),
             content = Json.encodeToString(entry)
         )
 
@@ -143,7 +137,7 @@ class LocalFileCache(
         entry: CacheEntry,
         expiresAt: Instant
     ) {
-        select(key = entry.id)?.let {
+        select(key = entry.key)?.let {
             throw CacheAlreadyPersisted()
         }
 
