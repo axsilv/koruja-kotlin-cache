@@ -40,12 +40,8 @@ class LocalFileCache(
     private val mutex: Mutex = Mutex()
 
     init {
-        if (Files.notExists(cachePath)) {
-            Files.createDirectory(cachePath)
-        }
-
-        if (Files.notExists(cachePath)) {
-            Files.createDirectory(expirationPath)
+        if (Files.notExists(cachePath) || Files.notExists(cachePath)) {
+            throw Exception()
         }
 
         if (properties.deleteExpiredCache) {
@@ -112,7 +108,7 @@ class LocalFileCache(
         prepareCache(entry, expiresAt)
 
         val deferred = writeFileAsync(
-            filePath = cachePath.resolve(entry.key.toString()),
+            filePath = cachePath.resolve(entry.key.toString() + ".txt"),
             content = Json.encodeToString(entry)
         )
 
@@ -122,15 +118,17 @@ class LocalFileCache(
     }
 
 
-    override suspend fun launchInsert(entry: CacheEntry, expiresAt: Instant): Job = scope.launch {
+    override suspend fun launchInsert(entry: CacheEntry, expiresAt: Instant): Job {
         prepareCache(entry, expiresAt)
 
-        launchWriteFile(
-            filePath = cachePath.resolve(entry.key.toString()),
+        val job = launchWriteFile(
+            filePath = cachePath.resolve(entry.key.toString() + ".txt"),
             content = Json.encodeToString(entry)
         )
 
         inMemoryCache.launchInsert(entry = entry, expiresAt = expiresAt)
+
+        return job
     }
 
     private suspend fun LocalFileCache.prepareCache(
@@ -166,7 +164,7 @@ class LocalFileCache(
     }
 
     override suspend fun selectAsync(key: CacheEntryKey): Deferred<CacheEntry?> = scope.async {
-        val file = readFileAsync(cachePath.resolve(key.toString())).await()
+        val file = readFileAsync(cachePath.resolve("$key.txt")).await()
         Json.decodeFromString<CacheEntry>(file)
     }
 
