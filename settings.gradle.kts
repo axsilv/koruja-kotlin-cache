@@ -1,2 +1,7 @@
 rootProject.name = "koruja-kotlin-cache"
-include("lib")
+
+include(
+    "core",
+    "localfile",
+    "inmemory"
+)
