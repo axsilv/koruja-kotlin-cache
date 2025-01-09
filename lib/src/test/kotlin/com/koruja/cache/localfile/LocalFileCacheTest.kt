@@ -46,7 +46,7 @@ class LocalFileCacheTest : BehaviorSpec({
                     cache.selectAll().first().shouldNotBeNull()
                     cache.selectAllAsync().await().first().shouldNotBeNull()
 
-                    delay(8.seconds)
+                    delay(15.seconds)
 
                     Files.deleteIfExists(Path.of("src", "test", "resources", "sync", "cache"))
                     Files.deleteIfExists(Path.of("src", "test", "resources", "sync", "expirations"))

@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -122,38 +123,60 @@ class InMemoryCache(
         cache.values.toList()
     }
 
-    override suspend fun cleanAll(): Deferred<Unit> {
-        TODO("Not yet implemented")
+    override suspend fun cleanAll(): Job = scope.launch {
+        val jobs = mutableListOf<Job>()
+        jobs += cache.keys()
+            .toList()
+            .map { key ->
+                scope.launch {
+                    cache.remove(key)
+                }
+            }.toList()
+
+        jobs += cacheExpirations.keys()
+            .toList()
+            .map { key ->
+                scope.launch {
+                    cacheExpirations.remove(key)
+                }
+            }.toList()
+
+        jobs.joinAll()
     }
 
-    private fun expirationWorker() {
+    private suspend fun expirationWorker() {
         while (true) {
             cacheExpirations.toList()
-                .parallelStream()
                 .map { (expiresAt, keys) ->
-                    scope.async {
-                        val shouldRemove = expirationDecider.shouldRemove(
-                            keys = keys,
-                            expiresAt = expiresAt
-                        )
-
-                        if (shouldRemove) {
-                            delete(keys = keys, expiresAt = expiresAt)
-                        }
-                    }
-                }
+                    deleteIfExpired(keys = keys, expiresAt = expiresAt)
+                }.toList()
+                .joinAll()
         }
     }
 
-    private fun delete(
+    private fun deleteIfExpired(
         keys: ConcurrentLinkedQueue<CacheEntryKey>,
         expiresAt: Instant
-    ): ConcurrentLinkedQueue<CacheEntryKey>? {
-        keys.parallelStream()
-            .map {
-                scope.async { cache.remove(it) }
-            }
+    ) = scope.launch {
+        val shouldRemove = expirationDecider.shouldRemove(
+            keys = keys,
+            expiresAt = expiresAt
+        )
 
-        return cacheExpirations.remove(expiresAt)
+        if (shouldRemove) {
+            delete(keys = keys, expiresAt = expiresAt)
+        }
+    }
+
+    private suspend fun delete(
+        keys: ConcurrentLinkedQueue<CacheEntryKey>,
+        expiresAt: Instant
+    ) {
+        keys.map {
+            scope.launch { cache.remove(it) }
+        }.toList()
+            .joinAll()
+
+        cacheExpirations.remove(expiresAt)
     }
 }

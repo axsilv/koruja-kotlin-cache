@@ -12,5 +12,5 @@ interface Cache {
     suspend fun selectAll(): List<CacheEntry>
     suspend fun selectAsync(key: CacheEntry.CacheEntryKey): Deferred<CacheEntry?>
     suspend fun selectAllAsync(): Deferred<List<CacheEntry>>
-    suspend fun cleanAll(): Deferred<Unit>
+    suspend fun cleanAll(): Job
 }

@@ -4,6 +4,7 @@ import com.koruja.cache.Cache
 import com.koruja.cache.CacheEntry
 import com.koruja.cache.CacheEntry.CacheEntryKey
 import com.koruja.cache.CacheException.CacheAlreadyPersisted
+import com.koruja.cache.InMemoryExpirationDecider
 import com.koruja.cache.LocalFileExpirationWorker
 import com.koruja.cache.inmemory.InMemoryCache
 import com.koruja.cache.inmemory.InMemoryExpirationDeciderGeneric
@@ -18,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.datetime.Instant
@@ -25,23 +27,24 @@ import kotlinx.serialization.json.Json
 
 class LocalFileCache(
     private val properties: LocalFileCacheProperties,
-    private val expirationWorker: LocalFileExpirationWorker,
-    private val writer: AsynchronousWriter,
-    private val asynchronousReader: AsynchronousReader,
-    private val reader: Reader
+    private val expirationWorker: LocalFileExpirationWorker = LocalFileExpirationWorkerGeneric(),
+    private val writer: AsynchronousWriter = AsynchronousWriterGeneric(),
+    private val asynchronousReader: AsynchronousReader = AsynchronousReaderGeneric(),
+    private val reader: Reader = ReaderGeneric(),
+    private val expirationDecider: InMemoryExpirationDecider = InMemoryExpirationDeciderGeneric()
 ) : Cache {
 
-    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val cachePath: Path =
         Paths.get("", *properties.baseDir.toTypedArray(), "cache")
     private val expirationPath: Path =
         Paths.get("", *properties.baseDir.toTypedArray(), "expirations")
-    private val inMemoryCache: InMemoryCache = InMemoryCache(expirationDecider = InMemoryExpirationDeciderGeneric())
+    private val inMemoryCache: InMemoryCache = InMemoryCache(expirationDecider = expirationDecider)
     private val mutex: Mutex = Mutex()
 
     init {
         if (Files.notExists(cachePath) || Files.notExists(cachePath)) {
-            throw Exception()
+            throw Exception() // todo
         }
 
         if (properties.deleteExpiredCache) {
@@ -84,7 +87,9 @@ class LocalFileCache(
             content = Json.encodeToString(entry)
         ).await()
 
-        inMemoryCache.launchInsert(entry = entry, expiresAt = expiresAt)
+        if (properties.enableInMemoryCacheSupport) {
+            inMemoryCache.launchInsert(entry = entry, expiresAt = expiresAt)
+        }
     }
 
     private fun expiresFileContent(entry: CacheEntry, expiresAt: Instant) = Json.encodeToString(
@@ -112,7 +117,9 @@ class LocalFileCache(
             content = Json.encodeToString(entry)
         )
 
-        inMemoryCache.launchInsert(entry = entry, expiresAt = expiresAt)
+        if (properties.enableInMemoryCacheSupport) {
+            inMemoryCache.launchInsert(entry = entry, expiresAt = expiresAt)
+        }
 
         return deferred
     }
@@ -126,7 +133,9 @@ class LocalFileCache(
             content = Json.encodeToString(entry)
         )
 
-        inMemoryCache.launchInsert(entry = entry, expiresAt = expiresAt)
+        if (properties.enableInMemoryCacheSupport) {
+            inMemoryCache.launchInsert(entry = entry, expiresAt = expiresAt)
+        }
 
         return job
     }
@@ -148,10 +157,12 @@ class LocalFileCache(
     }
 
     override suspend fun select(key: CacheEntryKey): CacheEntry? {
-        val memoryEntry = inMemoryCache.select(key = key)
+        if (properties.enableInMemoryCacheSupport) {
+            val memoryEntry = inMemoryCache.select(key = key)
 
-        if (memoryEntry != null) {
-            return memoryEntry
+            if (memoryEntry != null) {
+                return memoryEntry
+            }
         }
 
         val filePath = cachePath.resolve("$key.txt")
@@ -163,9 +174,19 @@ class LocalFileCache(
         return Json.decodeFromString<CacheEntry>(file)
     }
 
-    override suspend fun selectAsync(key: CacheEntryKey): Deferred<CacheEntry?> = scope.async {
-        val file = readFileAsync(cachePath.resolve("$key.txt")).await()
-        Json.decodeFromString<CacheEntry>(file)
+    override suspend fun selectAsync(key: CacheEntryKey): Deferred<CacheEntry?> {
+        return scope.async {
+            if (properties.enableInMemoryCacheSupport) {
+                val memoryEntry = inMemoryCache.select(key = key)
+
+                if (memoryEntry != null) {
+                    return@async memoryEntry
+                }
+            }
+
+            val file = readFileAsync(cachePath.resolve("$key.txt")).await()
+            Json.decodeFromString<CacheEntry>(file)
+        }
     }
 
     override suspend fun selectAll(): List<CacheEntry> = readAllFilesSync().map { file ->
@@ -185,9 +206,44 @@ class LocalFileCache(
             }
     }
 
-    override suspend fun cleanAll(): Deferred<Unit> = scope.async {
-        Files.deleteIfExists(cachePath)
-        Files.deleteIfExists(expirationPath)
+    override suspend fun cleanAll(): Job = scope.launch {
+        val jobs = mutableListOf<Job>()
+
+        jobs += Files.walk(cachePath).use { stream ->
+            stream.filter { Files.isRegularFile(it) }
+                .map {
+                    scope.launch {
+                        runCatching {
+                            val cacheLocation = cachePath.resolve(it)
+                            try {
+                                mutex.lock(cacheLocation)
+                                cacheLocation.toFile().deleteRecursively()
+                            } finally {
+                                mutex.unlock(cacheLocation)
+                            }
+                        }
+                    }
+                }.toList()
+        }
+
+        jobs += Files.walk(expirationPath).use { stream ->
+            stream.filter { Files.isRegularFile(it) }
+                .map {
+                    scope.launch {
+                        runCatching {
+                            val cacheLocation = expirationPath.resolve(it)
+                            try {
+                                mutex.lock(cacheLocation)
+                                cacheLocation.toFile().deleteRecursively()
+                            } finally {
+                                mutex.unlock(cacheLocation)
+                            }
+                        }
+                    }
+                }.toList()
+        }
+
+        jobs.joinAll()
     }
 
     private fun readAllFilesAsync(): Deferred<List<File>> = scope.async {
@@ -214,12 +270,14 @@ class LocalFileCache(
 
     private suspend fun expirationWorker() {
         while (true) {
-            expirationWorker.run(
-                mutex = mutex,
-                expirationPath = expirationPath,
-                cachePath = cachePath,
-                scope = scope
-            )
+            runCatching {
+                expirationWorker.run(
+                    mutex = mutex,
+                    expirationPath = expirationPath,
+                    cachePath = cachePath,
+                    scope = scope
+                )
+            }
         }
     }
 }
