@@ -1,0 +1,9 @@
+# Text files
+*.gradle text
+*.gradle.kts text
+*.kt text
+*.kts text
+*.java text
+*.xml text
+*.md text
+*.txt text
