@@ -4,6 +4,7 @@ import com.koruja.cache.core.Cache
 import com.koruja.cache.core.CacheEntry
 import com.koruja.cache.core.CacheEntry.CacheEntryKey
 import com.koruja.cache.core.CacheException.CacheAlreadyPersisted
+import com.koruja.cache.core.Decorator
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlinx.coroutines.CoroutineScope
@@ -20,7 +21,8 @@ import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 
 class InMemoryCache(
-    private val expirationDecider: InMemoryExpirationDecider
+    private val expirationDecider: InMemoryExpirationDecider,
+    private val decorators: List<Decorator> = emptyList()
 ) : Cache {
     private val cache: ConcurrentHashMap<CacheEntryKey, CacheEntry> = ConcurrentHashMap()
     private val cacheExpirations: ConcurrentHashMap<Instant, ConcurrentLinkedQueue<CacheEntryKey>> = ConcurrentHashMap()

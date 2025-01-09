@@ -5,5 +5,6 @@ enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 include(
     "core",
     "localfile",
-    "inmemory"
+    "inmemory",
+    "sample"
 )

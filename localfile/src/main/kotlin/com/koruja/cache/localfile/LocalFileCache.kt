@@ -3,6 +3,7 @@ package com.koruja.cache.localfile
 import com.koruja.cache.core.Cache
 import com.koruja.cache.core.CacheEntry
 import com.koruja.cache.core.CacheEntry.CacheEntryKey
+import com.koruja.cache.core.CacheException
 import com.koruja.cache.core.CacheException.CacheAlreadyPersisted
 import com.koruja.cache.inmemory.InMemoryCache
 import com.koruja.cache.inmemory.InMemoryExpirationDecider
@@ -38,12 +39,15 @@ class LocalFileCache(
         Paths.get("", *properties.baseDir.toTypedArray(), "cache")
     private val expirationPath: Path =
         Paths.get("", *properties.baseDir.toTypedArray(), "expirations")
-    private val inMemoryCache: InMemoryCache = InMemoryCache(expirationDecider = expirationDecider)
+    private val inMemoryCache: InMemoryCache = InMemoryCache(
+        expirationDecider = expirationDecider,
+        decorators = emptyList()
+    )
     private val mutex: Mutex = Mutex()
 
     init {
         if (Files.notExists(cachePath) || Files.notExists(cachePath)) {
-            throw Exception() // todo
+            throw CacheException.StartUpFailure("One ore more needed files path do not exists")
         }
 
         if (properties.deleteExpiredCache) {
@@ -82,7 +86,7 @@ class LocalFileCache(
         prepareCache(entry, expiresAt)
 
         writeFileAsync(
-            filePath = cachePath.resolve("${entry.key}.txt"),
+            filePath = cachePath.resolve("${entry.key}${properties.fileType.fileFormat}"),
             content = Json.encodeToString(entry)
         ).await()
 
@@ -105,14 +109,14 @@ class LocalFileCache(
             Files.createDirectory(expiresFolder)
         }
 
-        return expiresFolder.resolve("${entry.key}.txt")
+        return expiresFolder.resolve("${entry.key}${properties.fileType.fileFormat}")
     }
 
     override suspend fun insertAsync(entry: CacheEntry, expiresAt: Instant): Deferred<Unit> {
         prepareCache(entry, expiresAt)
 
         val deferred = writeFileAsync(
-            filePath = cachePath.resolve(entry.key.toString() + ".txt"),
+            filePath = cachePath.resolve(entry.key.toString() + properties.fileType.fileFormat),
             content = Json.encodeToString(entry)
         )
 
@@ -128,7 +132,7 @@ class LocalFileCache(
         prepareCache(entry, expiresAt)
 
         val job = launchWriteFile(
-            filePath = cachePath.resolve(entry.key.toString() + ".txt"),
+            filePath = cachePath.resolve(entry.key.toString() + properties.fileType.fileFormat),
             content = Json.encodeToString(entry)
         )
 
@@ -164,7 +168,7 @@ class LocalFileCache(
             }
         }
 
-        val filePath = cachePath.resolve("$key.txt")
+        val filePath = cachePath.resolve("$key${properties.fileType.fileFormat}")
         if (Files.notExists(filePath)) {
             return null
         }
@@ -183,7 +187,7 @@ class LocalFileCache(
                 }
             }
 
-            val file = readFileAsync(cachePath.resolve("$key.txt")).await()
+            val file = readFileAsync(cachePath.resolve("$key${properties.fileType.fileFormat}")).await()
             Json.decodeFromString<CacheEntry>(file)
         }
     }

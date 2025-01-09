@@ -45,5 +45,18 @@ subprojects {
             testImplementation(rootProject.libs.kotest)
             testImplementation(rootProject.libs.kotest.junit5)
         }
+
+        if (project.name == "sample") {
+            tasks {
+                all { enabled = false }
+            }
+        }
+    }
+}
+
+tasks.register("buildLib") {
+    dependsOn(":clean", ":build") // todo - fix this task
+    doFirst {
+        project(":sample").tasks.all { this.enabled = false }
     }
 }

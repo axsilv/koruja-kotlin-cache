@@ -1,0 +1,4 @@
+core/** linguist-vendored=false
+inmemory/** linguist-vendored=false
+localfile/** linguist-vendored=false
+sample/** linguist-vendored=false
