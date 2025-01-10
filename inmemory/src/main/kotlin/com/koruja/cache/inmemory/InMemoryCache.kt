@@ -15,6 +15,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.Clock
@@ -52,34 +53,38 @@ class InMemoryCache(
     override suspend fun insertAsync(
         entry: CacheEntry,
         expiresAt: Instant,
-    ): Deferred<Unit> = scope.async {
-        selectAsync(key = entry.key).await()?.let {
-            throw CacheAlreadyPersisted()
+    ): Deferred<Unit> = supervisorScope {
+        async {
+            selectAsync(key = entry.key).await()?.let {
+                throw CacheAlreadyPersisted()
+            }
+
+            addCacheExpirations(
+                key = entry.key,
+                expiresAt = expiresAt,
+            )
+
+            cache[entry.key] = entry
         }
-
-        addCacheExpirations(
-            key = entry.key,
-            expiresAt = expiresAt,
-        )
-
-        cache[entry.key] = entry
     }
 
 
     override suspend fun launchInsert(
         entry: CacheEntry,
         expiresAt: Instant,
-    ): Job = scope.launch {
-        selectAsync(key = entry.key).await()?.let {
-            throw CacheAlreadyPersisted()
+    ): Job = supervisorScope {
+        launch {
+            selectAsync(key = entry.key).await()?.let {
+                throw CacheAlreadyPersisted()
+            }
+
+            addCacheExpirations(
+                key = entry.key,
+                expiresAt = expiresAt,
+            )
+
+            cache[entry.key] = entry
         }
-
-        addCacheExpirations(
-            key = entry.key,
-            expiresAt = expiresAt,
-        )
-
-        cache[entry.key] = entry
     }
 
 
@@ -110,39 +115,45 @@ class InMemoryCache(
 
     override suspend fun selectAll(): List<CacheEntry> = cache.values.toList()
 
-    override suspend fun selectAsync(key: CacheEntryKey): Deferred<CacheEntry?> = scope.async {
-        cache.get(key = key)?.let { entry ->
-            if (entry.expiresAt >= Clock.System.now()) {
-                return@async entry
+    override suspend fun selectAsync(key: CacheEntryKey): Deferred<CacheEntry?> = supervisorScope {
+        scope.async {
+            cache.get(key = key)?.let { entry ->
+                if (entry.expiresAt >= Clock.System.now()) {
+                    return@async entry
+                }
             }
+
+            return@async null
         }
-
-        return@async null
     }
 
-    override suspend fun selectAllAsync(): Deferred<List<CacheEntry>> = scope.async {
-        cache.values.toList()
+    override suspend fun selectAllAsync(): Deferred<List<CacheEntry>> = supervisorScope {
+        async {
+            cache.values.toList()
+        }
     }
 
-    override suspend fun cleanAll(): Job = scope.launch {
-        val jobs = mutableListOf<Job>()
-        jobs += cache.keys()
-            .toList()
-            .map { key ->
-                scope.launch {
-                    cache.remove(key)
-                }
-            }.toList()
+    override suspend fun cleanAll(): Job = supervisorScope {
+        launch {
+            val jobs = mutableListOf<Job>()
+            jobs += cache.keys()
+                .toList()
+                .map { key ->
+                    scope.launch {
+                        cache.remove(key)
+                    }
+                }.toList()
 
-        jobs += cacheExpirations.keys()
-            .toList()
-            .map { key ->
-                scope.launch {
-                    cacheExpirations.remove(key)
-                }
-            }.toList()
+            jobs += cacheExpirations.keys()
+                .toList()
+                .map { key ->
+                    scope.launch {
+                        cacheExpirations.remove(key)
+                    }
+                }.toList()
 
-        jobs.joinAll()
+            jobs.joinAll()
+        }
     }
 
     private suspend fun expirationWorker() {
@@ -155,26 +166,28 @@ class InMemoryCache(
         }
     }
 
-    private fun deleteIfExpired(
+    private suspend fun deleteIfExpired(
         keys: ConcurrentLinkedQueue<CacheEntryKey>,
         expiresAt: Instant
-    ) = scope.launch {
-        val shouldRemove = expirationDecider.shouldRemove(
-            keys = keys,
-            expiresAt = expiresAt
-        )
+    ) = supervisorScope {
+        launch {
+            val shouldRemove = expirationDecider.shouldRemove(
+                keys = keys,
+                expiresAt = expiresAt
+            )
 
-        if (shouldRemove) {
-            delete(keys = keys, expiresAt = expiresAt)
+            if (shouldRemove) {
+                delete(keys = keys, expiresAt = expiresAt)
+            }
         }
     }
 
     private suspend fun delete(
         keys: ConcurrentLinkedQueue<CacheEntryKey>,
         expiresAt: Instant
-    ) {
+    ) = supervisorScope {
         keys.map {
-            scope.launch { cache.remove(it) }
+            launch { cache.remove(it) }
         }.toList()
             .joinAll()
 
