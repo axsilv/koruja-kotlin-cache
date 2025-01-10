@@ -44,6 +44,7 @@ subprojects {
 
             testImplementation(rootProject.libs.kotest)
             testImplementation(rootProject.libs.kotest.junit5)
+            testImplementation(rootProject.libs.mockk)
         }
 
         if (project.name == "sample") {

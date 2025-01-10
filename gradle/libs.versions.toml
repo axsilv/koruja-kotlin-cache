@@ -3,6 +3,7 @@ coroutines = "1.10.0"
 datetime = "0.6.1"
 kotest = "6.0.0.M1"
 serialization = "1.8.0-RC"
+mockk = "1.13.14"
 
 [libraries]
 coroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
@@ -11,6 +12,7 @@ kotest = { module = "io.kotest:kotest-assertions-core", version.ref = "kotest" }
 kotest-junit5 = { module = "io.kotest:kotest-runner-junit5-jvm", version.ref = "kotest" }
 serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 serialization-core = { module = "org.jetbrains.kotlinx:kotlinx-serialization-core", version.ref = "serialization" }
+mockk = { module = "io.mockk:mockk", version.ref = "mockk"}
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version = "2.0.20" }
