@@ -3,10 +3,11 @@ plugins {
     `java-library`
     java
     id("org.jetbrains.kotlin.plugin.serialization") version "2.1.20-Beta1"
+    `maven-publish`
 }
 
 group = "com.koruja.kotlin.cache"
-version = "0.0-SNAPSHOT"
+version = "1.0.0"
 
 repositories {
     mavenCentral()
@@ -52,12 +53,5 @@ subprojects {
                 all { enabled = false }
             }
         }
-    }
-}
-
-tasks.register("buildLib") {
-    dependsOn(":clean", ":build") // todo - fix this task
-    doFirst {
-        project(":sample").tasks.all { this.enabled = false }
     }
 }

@@ -6,5 +6,4 @@ include(
     "core",
     "localfile",
     "inmemory",
-    "sample"
 )

@@ -10,8 +10,6 @@ import io.kotest.matchers.shouldBe
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.joinAll
-import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 
 class InMemoryCacheTest : BehaviorSpec({
@@ -23,12 +21,10 @@ class InMemoryCacheTest : BehaviorSpec({
                     val inMemoryCache = InMemoryCache(expirationDecider = InMemoryExpirationDeciderGeneric())
 
                     entries().map { entry ->
-                        launch {
-                            inMemoryCache.insert(entry = entry, expiresAt = entry.expiresAt)
-                        }
-                    }.joinAll()
+                        inMemoryCache.insert(entry = entry, expiresAt = entry.expiresAt)
+                    }
 
-                    inMemoryCache.selectAll().size shouldBe 10
+                    inMemoryCache.selectAll().getOrNull()?.size shouldBe 10
                 }
             }
 
@@ -38,9 +34,9 @@ class InMemoryCacheTest : BehaviorSpec({
 
                     entries().map { entry ->
                         inMemoryCache.insertAsync(entry = entry, expiresAt = entry.expiresAt)
-                    }.forEach { it.await() }
+                    }
 
-                    inMemoryCache.selectAll().size shouldBe 10
+                    inMemoryCache.selectAll().getOrNull()?.size shouldBe 10
                 }
             }
 
@@ -50,9 +46,9 @@ class InMemoryCacheTest : BehaviorSpec({
 
                     entries().map { entry ->
                         inMemoryCache.launchInsert(entry = entry, expiresAt = entry.expiresAt)
-                    }.joinAll()
+                    }
 
-                    inMemoryCache.selectAll().size shouldBe 10
+                    inMemoryCache.selectAll().getOrNull()?.size shouldBe 10
                 }
             }
 
@@ -80,17 +76,17 @@ class InMemoryCacheTest : BehaviorSpec({
                         expiresAt = Clock.System.now().plus(5.seconds),
                     )
 
-                    inMemoryCache.select(CacheEntryKey("key-test")).shouldNotBeNull()
-                    inMemoryCache.select(CacheEntryKey("key-test2")).shouldNotBeNull()
+                    inMemoryCache.select(CacheEntryKey("key-test")).getOrNull().shouldNotBeNull()
+                    inMemoryCache.select(CacheEntryKey("key-test2")).getOrNull().shouldNotBeNull()
 
                     delay(3.seconds)
 
-                    inMemoryCache.select(CacheEntryKey("key-test")).shouldBeNull()
-                    inMemoryCache.select(CacheEntryKey("key-test2")).shouldNotBeNull()
+                    inMemoryCache.select(CacheEntryKey("key-test")).getOrNull().shouldBeNull()
+                    inMemoryCache.select(CacheEntryKey("key-test2")).getOrNull().shouldNotBeNull()
 
                     delay(3.seconds)
 
-                    inMemoryCache.select(CacheEntryKey("key-test2")).shouldBeNull()
+                    inMemoryCache.select(CacheEntryKey("key-test2")).getOrNull().shouldBeNull()
                 }
 
                 then("Should remove by clean all") {
@@ -116,13 +112,13 @@ class InMemoryCacheTest : BehaviorSpec({
                         expiresAt = Clock.System.now().plus(5.days),
                     )
 
-                    inMemoryCache.select(CacheEntryKey("key-test")).shouldNotBeNull()
-                    inMemoryCache.select(CacheEntryKey("key-test2")).shouldNotBeNull()
+                    inMemoryCache.select(CacheEntryKey("key-test")).getOrNull().shouldNotBeNull()
+                    inMemoryCache.select(CacheEntryKey("key-test2")).getOrNull().shouldNotBeNull()
 
-                    inMemoryCache.cleanAll().join()
+                    inMemoryCache.cleanAll()
 
-                    inMemoryCache.select(CacheEntryKey("key-test")).shouldBeNull()
-                    inMemoryCache.select(CacheEntryKey("key-test2")).shouldBeNull()
+                    inMemoryCache.select(CacheEntryKey("key-test")).getOrNull().shouldBeNull()
+                    inMemoryCache.select(CacheEntryKey("key-test2")).getOrNull().shouldBeNull()
                 }
             }
         }
