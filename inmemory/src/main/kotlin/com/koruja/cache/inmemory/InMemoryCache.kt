@@ -5,8 +5,6 @@ import com.koruja.cache.core.CacheEntry
 import com.koruja.cache.core.CacheEntry.CacheEntryKey
 import com.koruja.cache.core.CacheException.CacheAlreadyPersisted
 import com.koruja.cache.core.Decorator
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ConcurrentLinkedQueue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -20,15 +18,17 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 
 class InMemoryCache(
     private val expirationDecider: InMemoryExpirationDecider,
-    private val decorators: List<Decorator> = emptyList()
+    private val decorators: List<Decorator> = emptyList(),
+    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
+    private val cache: ConcurrentHashMap<CacheEntryKey, CacheEntry> = ConcurrentHashMap(),
+    private val cacheExpirations: ConcurrentHashMap<Instant, ConcurrentLinkedQueue<CacheEntryKey>> = ConcurrentHashMap(),
 ) : Cache {
-    private val cache: ConcurrentHashMap<CacheEntryKey, CacheEntry> = ConcurrentHashMap()
-    private val cacheExpirations: ConcurrentHashMap<Instant, ConcurrentLinkedQueue<CacheEntryKey>> = ConcurrentHashMap()
     private val mutex: Mutex = Mutex()
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     init {
         scope.launch { expirationWorker() }
@@ -74,7 +74,6 @@ class InMemoryCache(
         }
     }
 
-
     override suspend fun launchInsert(
         entry: CacheEntry,
         expiresAt: Instant,
@@ -101,7 +100,6 @@ class InMemoryCache(
             }.join()
         }
     }
-
 
     private suspend fun addCacheExpirations(
         key: CacheEntryKey,
@@ -135,62 +133,69 @@ class InMemoryCache(
         }
     }
 
-
     override suspend fun selectAll() = runCatching { cache.values.toList() }
 
-    override suspend fun selectAsync(key: CacheEntryKey) = coroutineScope {
-        runCatching {
-            scope.async {
-                cache[key]?.let { entry ->
-                    if (entry.expiresAt >= Clock.System.now()) {
-                        return@async entry
-                    }
-                }
-
-                return@async null
-            }.await()
-        }
-    }
-
-    override suspend fun selectAllAsync() = coroutineScope {
-        runCatching {
-            async {
-                cache.values.toList()
-            }.await()
-        }
-    }
-
-
-    override suspend fun cleanAll() = coroutineScope {
-        runCatching {
-            async {
-                val jobs = mutableListOf<Job>()
-                jobs += cache.keys()
-                    .toList()
-                    .map { key ->
-                        scope.launch {
-                            cache.remove(key)
+    override suspend fun selectAsync(key: CacheEntryKey) =
+        coroutineScope {
+            runCatching {
+                scope
+                    .async {
+                        cache[key]?.let { entry ->
+                            if (entry.expiresAt >= Clock.System.now()) {
+                                return@async entry
+                            }
                         }
-                    }.toList()
 
-                jobs += cacheExpirations.keys()
-                    .toList()
-                    .map { key ->
-                        scope.launch {
-                            cacheExpirations.remove(key)
-                        }
-                    }.toList()
-
-                jobs.joinAll()
-            }.await()
+                        return@async null
+                    }.await()
+            }
         }
-    }
+
+    override suspend fun selectAllAsync() =
+        coroutineScope {
+            runCatching {
+                async {
+                    cache.values.toList()
+                }.await()
+            }
+        }
+
+    override suspend fun cleanAll() =
+        coroutineScope {
+            runCatching {
+                async {
+                    val jobs = mutableListOf<Job>()
+                    jobs +=
+                        cache
+                            .keys()
+                            .toList()
+                            .map { key ->
+                                scope.launch {
+                                    cache.remove(key)
+                                }
+                            }.toList()
+
+                    jobs +=
+                        cacheExpirations
+                            .keys()
+                            .toList()
+                            .map { key ->
+                                scope.launch {
+                                    cacheExpirations.remove(key)
+                                }
+                            }.toList()
+
+                    jobs.joinAll()
+                }.await()
+            }
+        }
 
     private suspend fun expirationWorker() {
         while (true) {
             runCatching {
                 coroutineScope {
-                    cacheExpirations.toList()
+                    cacheExpirations
+                        .toList()
                         .map { (expiresAt, keys) ->
                             launch {
                                 deleteIfExpired(keys = keys, expiresAt = expiresAt)
@@ -204,14 +209,15 @@ class InMemoryCache(
 
     private suspend fun deleteIfExpired(
         keys: ConcurrentLinkedQueue<CacheEntryKey>,
-        expiresAt: Instant
+        expiresAt: Instant,
     ) = coroutineScope {
         runCatching {
             async {
-                val shouldRemove = expirationDecider.shouldRemove(
-                    keys = keys,
-                    expiresAt = expiresAt
-                )
+                val shouldRemove =
+                    expirationDecider.shouldRemove(
+                        keys = keys,
+                        expiresAt = expiresAt,
+                    )
 
                 if (shouldRemove) {
                     delete(keys = keys, expiresAt = expiresAt)
@@ -222,12 +228,13 @@ class InMemoryCache(
 
     private suspend fun delete(
         keys: ConcurrentLinkedQueue<CacheEntryKey>,
-        expiresAt: Instant
+        expiresAt: Instant,
     ) = supervisorScope {
         runCatching {
-            keys.map {
-                launch { cache.remove(it) }
-            }.toList()
+            keys
+                .map {
+                    launch { cache.remove(it) }
+                }.toList()
                 .joinAll()
 
             cacheExpirations.remove(expiresAt)

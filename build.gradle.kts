@@ -4,6 +4,7 @@ plugins {
     java
     id("org.jetbrains.kotlin.plugin.serialization") version "2.1.20-Beta1"
     `maven-publish`
+    alias(libs.plugins.kotlinter)
 }
 
 group = "com.koruja.kotlin.cache"
@@ -29,6 +30,7 @@ subprojects {
         apply {
             plugin("org.jetbrains.kotlin.jvm")
             plugin("org.jetbrains.kotlin.plugin.serialization")
+            plugin("org.jmailen.kotlinter")
         }
 
         tasks.withType<Test> { useJUnitPlatform() }

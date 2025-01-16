@@ -1,5 +1,5 @@
 package com.koruja.cache.core
 
 interface Decorator {
-    suspend fun decorate()
+    suspend fun <T> decorate(execution: suspend () -> T): T
 }

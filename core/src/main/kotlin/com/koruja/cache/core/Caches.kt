@@ -7,7 +7,7 @@ object Caches {
 
     fun insert(
         key: CachesKey,
-        cache: Cache
+        cache: Cache,
     ) = caches.put(key, cache)
 
     fun delete(key: CachesKey) = caches.remove(key)
@@ -16,7 +16,9 @@ object Caches {
 
     fun selectAll() = caches.values.toList()
 
-    data class CachesKey(val key: String) {
+    data class CachesKey(
+        val key: String,
+    ) {
         override fun toString(): String = key
     }
 }

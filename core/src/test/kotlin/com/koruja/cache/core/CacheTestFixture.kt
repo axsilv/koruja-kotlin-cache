@@ -1,9 +1,9 @@
 package com.koruja.cache.core
 
 import com.koruja.cache.core.CacheEntry.CacheEntryKey
+import kotlinx.datetime.Clock
 import java.util.UUID
 import kotlin.time.Duration.Companion.minutes
-import kotlinx.datetime.Clock
 
 object CacheTestFixture {
     fun entries() =

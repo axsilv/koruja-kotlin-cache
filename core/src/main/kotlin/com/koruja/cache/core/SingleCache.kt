@@ -8,12 +8,13 @@ object SingleCache {
     private var started: Boolean = false
     private val mutex: Mutex = Mutex()
 
-    suspend fun insert(cache: Cache) = mutex.withLock {
-        if (started.not()) {
-            SingleCache.cache = cache
-            started = true
+    suspend fun insert(cache: Cache) =
+        mutex.withLock {
+            if (started.not()) {
+                SingleCache.cache = cache
+                started = true
+            }
         }
-    }
 
     fun select(): Cache? = cache
 

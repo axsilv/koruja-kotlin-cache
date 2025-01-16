@@ -9,9 +9,10 @@ data class CacheEntry(
     val expiresAt: Instant,
     val payload: String,
 ) {
-
     @Serializable
-    data class CacheEntryKey(private val id: String) {
+    data class CacheEntryKey(
+        private val id: String,
+    ) {
         override fun toString(): String = id
     }
 }

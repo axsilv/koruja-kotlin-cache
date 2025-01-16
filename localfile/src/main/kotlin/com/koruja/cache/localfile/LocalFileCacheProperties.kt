@@ -4,5 +4,5 @@ data class LocalFileCacheProperties(
     val baseDir: List<String>,
     val deleteExpiredCache: Boolean = true,
     val enableInMemoryCacheSupport: Boolean = false,
-    val fileType: FileType = FileType.TXT
+    val fileType: FileType = FileType.TXT,
 )

@@ -4,6 +4,7 @@ datetime = "0.6.1"
 kotest = "6.0.0.M1"
 serialization = "1.8.0-RC"
 mockk = "1.13.14"
+kotlinter = "5.0.1"
 
 [libraries]
 coroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
@@ -16,3 +17,4 @@ mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version = "2.0.20" }
+kotlinter = { id = "org.jmailen.kotlinter", version.ref = "kotlinter"}
