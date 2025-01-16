@@ -5,6 +5,7 @@ import com.koruja.cache.core.CacheEntry
 import com.koruja.cache.core.CacheEntry.CacheEntryKey
 import com.koruja.cache.core.CacheException.CacheAlreadyPersisted
 import com.koruja.cache.core.Decorator
+import com.koruja.kotlin.cache.decorators.WithTimeoutDecorator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -23,7 +24,8 @@ import java.util.concurrent.ConcurrentLinkedQueue
 
 class InMemoryCache(
     private val expirationDecider: InMemoryExpirationDecider,
-    private val decorators: List<Decorator> = emptyList(),
+    private val insertDecorators: List<Decorator> = listOf(WithTimeoutDecorator(400)),
+    private val selectDecorators: List<Decorator> = listOf(WithTimeoutDecorator(800)),
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
     private val cache: ConcurrentHashMap<CacheEntryKey, CacheEntry> = ConcurrentHashMap(),
     private val cacheExpirations: ConcurrentHashMap<Instant, ConcurrentLinkedQueue<CacheEntryKey>> = ConcurrentHashMap(),
@@ -38,18 +40,28 @@ class InMemoryCache(
         entry: CacheEntry,
         expiresAt: Instant,
     ) = runCatching {
-        select(key = entry.key).let { result ->
-            if (result.isSuccess && result.getOrNull() != null) {
-                throw CacheAlreadyPersisted()
+        val functionToDecorate =
+            suspend {
+                select(key = entry.key).let { result ->
+                    if (result.isSuccess && result.getOrNull() != null) {
+                        throw CacheAlreadyPersisted()
+                    }
+                }
+
+                addCacheExpirations(
+                    key = entry.key,
+                    expiresAt = expiresAt,
+                )
+
+                cache[entry.key] = entry
             }
-        }
 
-        addCacheExpirations(
-            key = entry.key,
-            expiresAt = expiresAt,
-        )
+        val decoratedFunction =
+            insertDecorators.fold(functionToDecorate) { acc, decorator ->
+                { decorator.decorate(acc) }
+            }
 
-        cache[entry.key] = entry
+        decoratedFunction()
     }
 
     override suspend fun insertAsync(

@@ -6,4 +6,5 @@ include(
     "core",
     "localfile",
     "inmemory",
+    "decorators"
 )

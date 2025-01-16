@@ -44,7 +44,7 @@ class LocalFileCache(
     private val inMemoryCache: InMemoryCache =
         InMemoryCache(
             expirationDecider = expirationDecider,
-            decorators = emptyList(),
+            insertDecorators = emptyList(),
         )
     private val mutex: Mutex = Mutex()
 
