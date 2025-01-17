@@ -8,6 +8,7 @@ import kotlinx.datetime.Clock
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.UUID
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 class LocalFileCacheTest :
@@ -33,7 +34,7 @@ class LocalFileCacheTest :
                                 reader = ReaderGeneric(),
                             )
                         val key = UUID.randomUUID().toString()
-                        val expiresAt = Clock.System.now().plus(5.seconds)
+                        val expiresAt = Clock.System.now().plus(10.seconds)
 
                         cache.insert(
                             entry =
@@ -42,7 +43,6 @@ class LocalFileCacheTest :
                                     expiresAt = expiresAt,
                                     payload = "test=payload",
                                 ),
-                            expiresAt = expiresAt,
                         )
 
                         cache.select(CacheEntry.CacheEntryKey(key)).getOrNull().shouldNotBeNull()
@@ -88,13 +88,14 @@ class LocalFileCacheTest :
                         val expiresAt = Clock.System.now().plus(5.seconds)
 
                         cache.insertAsync(
-                            entry =
-                                CacheEntry(
-                                    key = CacheEntry.CacheEntryKey(key),
-                                    expiresAt = expiresAt,
-                                    payload = "test=payload",
+                            entries =
+                                listOf(
+                                    CacheEntry(
+                                        key = CacheEntry.CacheEntryKey(key),
+                                        expiresAt = expiresAt,
+                                        payload = "test=payload",
+                                    ),
                                 ),
-                            expiresAt = expiresAt,
                         )
 
                         cache.select(CacheEntry.CacheEntryKey(key)).getOrNull().shouldNotBeNull()
@@ -146,8 +147,9 @@ class LocalFileCacheTest :
                                     expiresAt = expiresAt,
                                     payload = "test=payload",
                                 ),
-                            expiresAt = expiresAt,
                         )
+
+                        delay(200.milliseconds)
 
                         cache.select(CacheEntry.CacheEntryKey(key)).shouldNotBeNull()
                         cache.selectAsync(CacheEntry.CacheEntryKey(key)).getOrNull().shouldNotBeNull()

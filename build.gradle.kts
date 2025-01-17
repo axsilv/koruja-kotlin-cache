@@ -40,10 +40,13 @@ subprojects {
         }
 
         dependencies {
+            implementation(rootProject.libs.logging.jvm)
             implementation(rootProject.libs.coroutines)
             implementation(rootProject.libs.datetime)
             implementation(rootProject.libs.serialization.core)
             implementation(rootProject.libs.serialization.json)
+
+            runtimeOnly(rootProject.libs.slf4j)
 
             testImplementation(rootProject.libs.kotest)
             testImplementation(rootProject.libs.kotest.junit5)

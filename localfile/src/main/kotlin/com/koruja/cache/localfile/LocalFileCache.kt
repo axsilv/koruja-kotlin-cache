@@ -16,16 +16,17 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.datetime.Instant
 import kotlinx.serialization.json.Json
 import java.io.File
-import java.io.FileNotFoundException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.concurrent.ConcurrentLinkedQueue
 
 class LocalFileCache(
     private val properties: LocalFileCacheProperties,
@@ -35,7 +36,8 @@ class LocalFileCache(
     private val reader: Reader = ReaderGeneric(),
     private val expirationDecider: InMemoryExpirationDecider = InMemoryExpirationDeciderGeneric(),
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
-    private val decorators: List<Decorator> = emptyList(),
+    private val insertDecorators: List<Decorator> = emptyList(),
+    private val selectDecorators: List<Decorator> = emptyList(),
 ) : Cache {
     private val cachePath: Path =
         Paths.get("", *properties.baseDir.toTypedArray(), "cache")
@@ -66,14 +68,6 @@ class LocalFileCache(
             asynchronousWriter(filePath = filePath, content = content)
         }
 
-    private fun launchWriteFile(
-        filePath: Path,
-        content: String,
-    ): Job =
-        scope.launch {
-            asynchronousWriter(filePath = filePath, content = content)
-        }
-
     private suspend fun asynchronousWriter(
         filePath: Path,
         content: String,
@@ -99,21 +93,25 @@ class LocalFileCache(
                 scope = scope,
             ).await()
 
-    override suspend fun insert(
-        entry: CacheEntry,
-        expiresAt: Instant,
-    ) = runCatching {
-        prepareCache(entry, expiresAt)
+    override suspend fun insert(entry: CacheEntry) =
+        runCatching {
+            prepareCache(
+                entry = entry,
+                expiresAt = entry.expiresAt,
+            )
 
-        writeFileAsync(
-            filePath = cachePath.resolve("${entry.key}${properties.fileType.fileFormat}"),
-            content = Json.encodeToString(entry),
-        ).await()
+            val writeFileAsync =
+                writeFileAsync(
+                    filePath = cachePath.resolve("${entry.key}${properties.fileType.fileFormat}"),
+                    content = Json.encodeToString(entry),
+                )
 
-        if (properties.enableInMemoryCacheSupport) {
-            inMemoryCache.launchInsert(entry = entry, expiresAt = expiresAt)
+            if (properties.enableInMemoryCacheSupport) {
+                inMemoryCache.launchInsert(entry = entry)
+            }
+
+            writeFileAsync.await()
         }
-    }
 
     private fun expiresFileContent(
         entry: CacheEntry,
@@ -138,43 +136,28 @@ class LocalFileCache(
         return expiresFolder.resolve("${entry.key}${properties.fileType.fileFormat}")
     }
 
-    override suspend fun insertAsync(
-        entry: CacheEntry,
-        expiresAt: Instant,
-    ) = runCatching {
-        prepareCache(entry, expiresAt)
-
-        val deferred =
-            writeFileAsync(
-                filePath = cachePath.resolve(entry.key.toString() + properties.fileType.fileFormat),
-                content = Json.encodeToString(entry),
-            )
-
-        if (properties.enableInMemoryCacheSupport) {
-            inMemoryCache.launchInsert(entry = entry, expiresAt = expiresAt)
+    override suspend fun insertAsync(entries: List<CacheEntry>) =
+        runCatching {
+            coroutineScope {
+                entries
+                    .map { entry ->
+                        async {
+                            insert(entry = entry)
+                        }
+                    }.awaitAll()
+            }
+            Unit
         }
 
-        deferred.await()
-    }
-
-    override suspend fun launchInsert(
-        entry: CacheEntry,
-        expiresAt: Instant,
-    ) = runCatching {
-        prepareCache(entry, expiresAt)
-
-        val job =
-            launchWriteFile(
-                filePath = cachePath.resolve(entry.key.toString() + properties.fileType.fileFormat),
-                content = Json.encodeToString(entry),
-            )
-
-        if (properties.enableInMemoryCacheSupport) {
-            inMemoryCache.launchInsert(entry = entry, expiresAt = expiresAt)
+    override suspend fun launchInsert(entry: CacheEntry) =
+        runCatching {
+            coroutineScope {
+                launch {
+                    insert(entry = entry)
+                }
+            }
+            Unit
         }
-
-        job.join()
-    }
 
     private suspend fun LocalFileCache.prepareCache(
         entry: CacheEntry,
@@ -244,29 +227,23 @@ class LocalFileCache(
 
     override suspend fun selectAll() =
         runCatching {
-            readAllFilesSync().mapNotNull { file ->
-                try {
-                    val lines = file.readText()
-                    Json.decodeFromString<CacheEntry>(lines)
-                } catch (_: FileNotFoundException) {
-                    null
-                }
+            readAllFiles().map { file ->
+                val lines = file.readText()
+                Json.decodeFromString<CacheEntry>(lines)
             }
         }
 
     override suspend fun selectAllAsync() =
         runCatching {
-            scope
-                .async {
-                    readAllFilesAsync()
-                        .await()
-                        .map { file ->
-                            scope.async {
-                                val lines = file.readText()
-                                Json.decodeFromString<CacheEntry>(lines)
-                            }
-                        }.awaitAll()
-                }.await()
+            coroutineScope {
+                readAllFiles()
+                    .map { file ->
+                        async {
+                            val lines = file.readText()
+                            Json.decodeFromString<CacheEntry>(lines)
+                        }
+                    }.awaitAll()
+            }
         }
 
     override suspend fun cleanAll() =
@@ -317,27 +294,23 @@ class LocalFileCache(
                 }.join()
         }
 
-    private fun readAllFilesAsync(): Deferred<List<File>> =
-        scope.async {
-            readAllFiles().toList()
+    private suspend fun readAllFiles(): List<File> =
+        coroutineScope {
+            val fileList = ConcurrentLinkedQueue<File>()
+
+            Files.walk(cachePath).use { stream ->
+                stream
+                    .filter { Files.isRegularFile(it) }
+                    .toList()
+                    .map { path ->
+                        launch {
+                            fileList.add(path.toFile())
+                        }
+                    }.joinAll()
+            }
+
+            return@coroutineScope fileList.toList()
         }
-
-    private fun readAllFilesSync(): List<File> = readAllFiles().toList()
-
-    private fun readAllFiles(): MutableList<File> {
-        val fileList = mutableListOf<File>()
-
-        Files.walk(cachePath).use { stream ->
-            stream
-                .filter {
-                    Files.isRegularFile(it)
-                }.forEach { path ->
-                    fileList.add(path.toFile())
-                }
-        }
-
-        return fileList
-    }
 
     private suspend fun expirationWorker() {
         while (true) {

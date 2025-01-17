@@ -5,6 +5,13 @@ kotest = "6.0.0.M1"
 serialization = "1.8.0-RC"
 mockk = "1.13.14"
 kotlinter = "5.0.1"
+logging-jvm = "7.0.3"
+slf4j = "1.7.32"
+
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version = "2.0.20" }
+kotlinter = { id = "org.jmailen.kotlinter", version.ref = "kotlinter"}
 
 [libraries]
 coroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
@@ -14,7 +21,5 @@ kotest-junit5 = { module = "io.kotest:kotest-runner-junit5-jvm", version.ref = "
 serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 serialization-core = { module = "org.jetbrains.kotlinx:kotlinx-serialization-core", version.ref = "serialization" }
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
-
-[plugins]
-kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version = "2.0.20" }
-kotlinter = { id = "org.jmailen.kotlinter", version.ref = "kotlinter"}
+logging-jvm = { module = "io.github.oshai:kotlin-logging-jvm", version.ref = "logging-jvm" }
+slf4j = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j"}

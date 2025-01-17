@@ -1,22 +1,11 @@
 package com.koruja.cache.core
 
-import kotlinx.datetime.Instant
-
 interface Cache {
-    suspend fun insert(
-        entry: CacheEntry,
-        expiresAt: Instant,
-    ): Result<Unit>
+    suspend fun insert(entry: CacheEntry): Result<Unit>
 
-    suspend fun insertAsync(
-        entry: CacheEntry,
-        expiresAt: Instant,
-    ): Result<Unit>
+    suspend fun insertAsync(entries: List<CacheEntry>): Result<Unit>
 
-    suspend fun launchInsert(
-        entry: CacheEntry,
-        expiresAt: Instant,
-    ): Result<Unit>
+    suspend fun launchInsert(entry: CacheEntry): Result<Unit>
 
     suspend fun select(key: CacheEntry.CacheEntryKey): Result<CacheEntry?>
 

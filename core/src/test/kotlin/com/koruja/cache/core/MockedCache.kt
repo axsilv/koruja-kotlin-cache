@@ -4,33 +4,26 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
-import kotlinx.datetime.Instant
 
 class MockedCache : Cache {
     private val caches = mutableListOf<CacheEntry>()
 
-    override suspend fun insert(
-        entry: CacheEntry,
-        expiresAt: Instant,
-    ) = runCatching {
-        caches.add(entry)
-        Unit
-    }
+    override suspend fun insert(entry: CacheEntry) =
+        runCatching {
+            caches.add(entry)
+            Unit
+        }
 
-    override suspend fun insertAsync(
-        entry: CacheEntry,
-        expiresAt: Instant,
-    ) = runCatching {
-        CoroutineScope(Dispatchers.IO).async { caches.add(entry) }.await()
-        Unit
-    }
+    override suspend fun insertAsync(entries: List<CacheEntry>) =
+        runCatching {
+            CoroutineScope(Dispatchers.IO).async { caches.addAll(entries) }.await()
+            Unit
+        }
 
-    override suspend fun launchInsert(
-        entry: CacheEntry,
-        expiresAt: Instant,
-    ) = runCatching {
-        CoroutineScope(Dispatchers.IO).launch { caches.add(entry) }.join()
-    }
+    override suspend fun launchInsert(entry: CacheEntry) =
+        runCatching {
+            CoroutineScope(Dispatchers.IO).launch { caches.add(entry) }.join()
+        }
 
     override suspend fun select(key: CacheEntry.CacheEntryKey) = runCatching { caches.find { it.key == key } }
 

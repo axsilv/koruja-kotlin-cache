@@ -5,12 +5,14 @@ import com.koruja.cache.core.CacheEntry
 import com.koruja.cache.core.CacheEntry.CacheEntryKey
 import com.koruja.cache.core.CacheException.CacheAlreadyPersisted
 import com.koruja.cache.core.Decorator
+import com.koruja.kotlin.cache.decorators.LoggingDecorator
 import com.koruja.kotlin.cache.decorators.WithTimeoutDecorator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -24,8 +26,8 @@ import java.util.concurrent.ConcurrentLinkedQueue
 
 class InMemoryCache(
     private val expirationDecider: InMemoryExpirationDecider,
-    private val insertDecorators: List<Decorator> = listOf(WithTimeoutDecorator(400)),
-    private val selectDecorators: List<Decorator> = listOf(WithTimeoutDecorator(800)),
+    private val insertDecorators: List<Decorator> = listOf(WithTimeoutDecorator(400), LoggingDecorator()),
+    private val selectDecorators: List<Decorator> = listOf(WithTimeoutDecorator(1500), LoggingDecorator()),
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
     private val cache: ConcurrentHashMap<CacheEntryKey, CacheEntry> = ConcurrentHashMap(),
     private val cacheExpirations: ConcurrentHashMap<Instant, ConcurrentLinkedQueue<CacheEntryKey>> = ConcurrentHashMap(),
@@ -36,82 +38,58 @@ class InMemoryCache(
         scope.launch { expirationWorker() }
     }
 
-    override suspend fun insert(
-        entry: CacheEntry,
-        expiresAt: Instant,
-    ) = runCatching {
-        val functionToDecorate =
-            suspend {
-                select(key = entry.key).let { result ->
-                    if (result.isSuccess && result.getOrNull() != null) {
-                        throw CacheAlreadyPersisted()
-                    }
-                }
-
-                addCacheExpirations(
-                    key = entry.key,
-                    expiresAt = expiresAt,
-                )
-
-                cache[entry.key] = entry
-            }
-
-        val decoratedFunction =
-            insertDecorators.fold(functionToDecorate) { acc, decorator ->
-                { decorator.decorate(acc) }
-            }
-
-        decoratedFunction()
-    }
-
-    override suspend fun insertAsync(
-        entry: CacheEntry,
-        expiresAt: Instant,
-    ) = coroutineScope {
-        return@coroutineScope runCatching {
-            async {
-                selectAsync(key = entry.key).let { result ->
-                    if (result.isSuccess && result.getOrNull() != null) {
-                        throw CacheAlreadyPersisted()
-                    }
-                }
-
-                addCacheExpirations(
-                    key = entry.key,
-                    expiresAt = expiresAt,
-                )
-
-                cache[entry.key] = entry
-            }.await()
-        }
-    }
-
-    override suspend fun launchInsert(
-        entry: CacheEntry,
-        expiresAt: Instant,
-    ) = coroutineScope {
+    override suspend fun insert(entry: CacheEntry) =
         runCatching {
-            launch {
-                selectAsync(key = entry.key).let { result ->
-                    if (result.isSuccess && result.getOrNull() != null) {
-                        throw CacheAlreadyPersisted()
+            val functionToDecorate =
+                suspend {
+                    select(key = entry.key).let { result ->
+                        result.getOrNull()?.let {
+                            throw CacheAlreadyPersisted()
+                        }
+
+                        result.exceptionOrNull()?.let {
+                            throw it
+                        }
                     }
 
-                    val exceptionOrNull = result.exceptionOrNull()
-                    if (result.isFailure && exceptionOrNull != null) {
-                        throw exceptionOrNull
-                    }
+                    addCacheExpirations(
+                        key = entry.key,
+                        expiresAt = entry.expiresAt,
+                    )
+
+                    cache[entry.key] = entry
                 }
 
-                addCacheExpirations(
-                    key = entry.key,
-                    expiresAt = expiresAt,
-                )
+            val decoratedFunction =
+                insertDecorators.fold(functionToDecorate) { acc, decorator ->
+                    { decorator.decorate(t = entry, function = acc) }
+                }
 
-                cache[entry.key] = entry
-            }.join()
+            decoratedFunction()
         }
-    }
+
+    override suspend fun insertAsync(entries: List<CacheEntry>) =
+        coroutineScope {
+            return@coroutineScope runCatching {
+                entries
+                    .map { entry ->
+                        async {
+                            insert(entry = entry)
+                        }
+                    }.awaitAll()
+                Unit
+            }
+        }
+
+    override suspend fun launchInsert(entry: CacheEntry) =
+        coroutineScope {
+            runCatching {
+                launch {
+                    insert(entry = entry)
+                }
+                Unit
+            }
+        }
 
     private suspend fun addCacheExpirations(
         key: CacheEntryKey,
