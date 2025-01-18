@@ -1,10 +1,11 @@
 plugins {
-    alias(libs.plugins.kotlin.jvm)
-    `java-library`
     java
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.1.20-Beta1"
+    `java-library`
     `maven-publish`
+
+    alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlinter)
+    alias(libs.plugins.serializationp)
 }
 
 group = "com.koruja.kotlin.cache"
@@ -51,12 +52,6 @@ subprojects {
             testImplementation(rootProject.libs.kotest)
             testImplementation(rootProject.libs.kotest.junit5)
             testImplementation(rootProject.libs.mockk)
-        }
-
-        if (project.name == "sample") {
-            tasks {
-                all { enabled = false }
-            }
         }
     }
 }
