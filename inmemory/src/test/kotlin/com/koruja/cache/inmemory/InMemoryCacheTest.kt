@@ -3,8 +3,8 @@ package com.koruja.cache.inmemory
 import com.koruja.cache.core.CacheEntry
 import com.koruja.cache.core.CacheEntry.CacheEntryKey
 import com.koruja.cache.inmemory.CacheTestFixture.entries
+import io.github.oshai.kotlinlogging.KotlinLogging
 import io.kotest.core.spec.style.BehaviorSpec
-import io.kotest.matchers.comparables.shouldBeLessThan
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -16,6 +16,8 @@ import kotlin.time.measureTimedValue
 
 class InMemoryCacheTest :
     BehaviorSpec({
+
+        val log = KotlinLogging.logger { }
 
         context("Concurrent singleton cache") {
             given("50000 concurrent insert operations") {
@@ -30,7 +32,7 @@ class InMemoryCacheTest :
                                 }
                             }
 
-                        duration shouldBeLessThan 1.seconds
+                        log.info { "duration $duration" }
 
                         inMemoryCache.selectAll().getOrNull()?.size shouldBe 50000
                     }

@@ -12,7 +12,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
@@ -68,8 +67,8 @@ class InMemoryCache(
         }
 
     override suspend fun insertAsync(entries: List<CacheEntry>) =
-        coroutineScope {
-            return@coroutineScope runCatching {
+        supervisorScope {
+            runCatching {
                 entries
                     .map { entry ->
                         async {
@@ -81,7 +80,7 @@ class InMemoryCache(
         }
 
     override suspend fun launchInsert(entry: CacheEntry) =
-        coroutineScope {
+        supervisorScope {
             runCatching {
                 launch {
                     insert(entry = entry)
@@ -125,7 +124,7 @@ class InMemoryCache(
     override suspend fun selectAll() = runCatching { cache.values.toList() }
 
     override suspend fun selectAsync(key: CacheEntryKey) =
-        coroutineScope {
+        supervisorScope {
             runCatching {
                 scope
                     .async {
@@ -141,7 +140,7 @@ class InMemoryCache(
         }
 
     override suspend fun selectAllAsync() =
-        coroutineScope {
+        supervisorScope {
             runCatching {
                 async {
                     cache.values.toList()
@@ -150,7 +149,7 @@ class InMemoryCache(
         }
 
     override suspend fun cleanAll() =
-        coroutineScope {
+        supervisorScope {
             runCatching {
                 cache
                     .keys()
@@ -174,8 +173,8 @@ class InMemoryCache(
 
     private suspend fun expirationWorker() {
         while (true) {
-            runCatching {
-                supervisorScope {
+            supervisorScope {
+                runCatching {
                     cacheExpirations
                         .toList()
                         .map { (expiresAt, keys) ->

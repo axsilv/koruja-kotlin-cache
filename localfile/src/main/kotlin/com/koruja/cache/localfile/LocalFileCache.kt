@@ -12,13 +12,13 @@ import com.koruja.cache.inmemory.InMemoryExpirationDeciderGeneric
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.datetime.Instant
 import kotlinx.serialization.json.Json
@@ -247,51 +247,57 @@ class LocalFileCache(
         }
 
     override suspend fun cleanAll() =
+        supervisorScope {
+            runCatching {
+                cleanAllCache().let {
+                    if (it.isSuccess) {
+                        cleanAllExpirations()
+                    }
+                }
+            }
+        }
+
+    private suspend fun cleanAllExpirations() {
+        Files.walk(expirationPath).use { stream ->
+            stream
+                .filter { Files.isRegularFile(it) }
+                .toList()
+                .map {
+                    scope.launch {
+                        runCatching {
+                            val cacheLocation = expirationPath.resolve(it)
+                            try {
+                                mutex.lock(cacheLocation)
+                                cacheLocation.toFile().deleteRecursively()
+                            } finally {
+                                mutex.unlock(cacheLocation)
+                            }
+                        }
+                    }
+                }.joinAll()
+        }
+    }
+
+    private suspend fun cleanAllCache(): Result<Unit> =
         runCatching {
-            scope
-                .launch {
-                    val jobs = mutableListOf<Job>()
-
-                    jobs +=
-                        Files.walk(cachePath).use { stream ->
-                            stream
-                                .filter { Files.isRegularFile(it) }
-                                .map {
-                                    scope.launch {
-                                        runCatching {
-                                            val cacheLocation = cachePath.resolve(it)
-                                            try {
-                                                mutex.lock(cacheLocation)
-                                                cacheLocation.toFile().deleteRecursively()
-                                            } finally {
-                                                mutex.unlock(cacheLocation)
-                                            }
-                                        }
-                                    }
-                                }.toList()
+            Files.walk(cachePath).use { stream ->
+                stream
+                    .filter { Files.isRegularFile(it) }
+                    .toList()
+                    .map {
+                        scope.launch {
+                            runCatching {
+                                val cacheLocation = cachePath.resolve(it)
+                                try {
+                                    mutex.lock(cacheLocation)
+                                    cacheLocation.toFile().deleteRecursively()
+                                } finally {
+                                    mutex.unlock(cacheLocation)
+                                }
+                            }
                         }
-
-                    jobs +=
-                        Files.walk(expirationPath).use { stream ->
-                            stream
-                                .filter { Files.isRegularFile(it) }
-                                .map {
-                                    scope.launch {
-                                        runCatching {
-                                            val cacheLocation = expirationPath.resolve(it)
-                                            try {
-                                                mutex.lock(cacheLocation)
-                                                cacheLocation.toFile().deleteRecursively()
-                                            } finally {
-                                                mutex.unlock(cacheLocation)
-                                            }
-                                        }
-                                    }
-                                }.toList()
-                        }
-
-                    jobs.joinAll()
-                }.join()
+                    }.joinAll()
+            }
         }
 
     private suspend fun readAllFiles(): List<File> =
