@@ -21,7 +21,7 @@ class InMemoryCacheWithGenericsIntegrationTest :
         val log = KotlinLogging.logger { }
 
         context("Concurrent singleton cache") {
-            given("50000 concurrent insert operations") {
+            given("3 concurrent insert operations") {
                 `when`("Insert") {
                     then("Should contain all elements") {
                         val inMemoryCache = InMemoryCache(properties = CacheProperties(isCacheDebugEnabled = true))
