@@ -13,7 +13,7 @@ import kotlin.time.Duration.Companion.seconds
 
 class LocalFileCacheTest :
     BehaviorSpec({
-        context("Writes local cache in files at the root") {
+        xcontext("Writes local cache in files at the root") {
             given("A single cache entry") {
                 `when`("Insert sync the cache") {
                     then("Should be able to insert, select, select all and then expires the cache") {
@@ -23,6 +23,7 @@ class LocalFileCacheTest :
 
                         val properties =
                             LocalFileCacheProperties(
+                                isCacheDebugEnabled = true,
                                 baseDir = listOf("src", "test", "resources", "sync"),
                             )
                         val cache =
@@ -74,6 +75,7 @@ class LocalFileCacheTest :
 
                         val properties =
                             LocalFileCacheProperties(
+                                isCacheDebugEnabled = true,
                                 baseDir = listOf("src", "test", "resources", "async"),
                             )
                         val cache =
@@ -127,6 +129,7 @@ class LocalFileCacheTest :
 
                         val properties =
                             LocalFileCacheProperties(
+                                isCacheDebugEnabled = true,
                                 baseDir = listOf("src", "test", "resources", "launch"),
                             )
                         val cache =

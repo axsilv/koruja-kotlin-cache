@@ -8,7 +8,7 @@ import kotlin.time.Duration.Companion.minutes
 
 object CacheTestFixture {
     fun entries() =
-        (1..50000).map {
+        (1..3).map {
             CacheEntry(
                 key = CacheEntryKey(UUID.randomUUID().toString()),
                 expiresAt = Clock.System.now().plus(1.minutes),

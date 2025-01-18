@@ -4,6 +4,7 @@ import com.koruja.cache.core.Cache
 import com.koruja.cache.core.CacheEntry
 import com.koruja.cache.core.CacheEntry.CacheEntryKey
 import com.koruja.cache.core.CacheException.CacheAlreadyPersisted
+import com.koruja.cache.core.CacheProperties
 import com.koruja.cache.core.Decorator
 import com.koruja.kotlin.cache.decorators.LoggingDecorator
 import com.koruja.kotlin.cache.decorators.WithTimeoutDecorator
@@ -23,9 +24,18 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 
 class InMemoryCache(
-    private val expirationDecider: InMemoryExpirationDecider,
-    private val insertDecorators: List<Decorator> = listOf(WithTimeoutDecorator(400), LoggingDecorator()),
-    private val selectDecorators: List<Decorator> = listOf(WithTimeoutDecorator(1500), LoggingDecorator()),
+    private val properties: CacheProperties,
+    private val expirationDecider: InMemoryExpirationDecider = InMemoryExpirationDeciderGeneric(),
+    private val insertDecorators: List<Decorator> =
+        listOf(
+            WithTimeoutDecorator(timeoutMillis = 400),
+            LoggingDecorator(properties = properties),
+        ),
+    private val selectDecorators: List<Decorator> =
+        listOf(
+            WithTimeoutDecorator(timeoutMillis = 1500),
+            LoggingDecorator(properties = properties),
+        ),
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
     private val cache: ConcurrentHashMap<CacheEntryKey, CacheEntry> = ConcurrentHashMap(),
     private val cacheExpirations: ConcurrentHashMap<Instant, ConcurrentLinkedQueue<CacheEntryKey>> = ConcurrentHashMap(),

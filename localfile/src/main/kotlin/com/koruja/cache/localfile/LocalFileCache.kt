@@ -45,8 +45,10 @@ class LocalFileCache(
         Paths.get("", *properties.baseDir.toTypedArray(), "expirations")
     private val inMemoryCache: InMemoryCache =
         InMemoryCache(
+            properties = properties,
             expirationDecider = expirationDecider,
-            insertDecorators = emptyList(),
+            insertDecorators = insertDecorators,
+            selectDecorators = selectDecorators,
         )
     private val mutex: Mutex = Mutex()
 

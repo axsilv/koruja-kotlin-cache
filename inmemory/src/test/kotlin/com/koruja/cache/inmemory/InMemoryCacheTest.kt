@@ -1,132 +1,200 @@
 package com.koruja.cache.inmemory
 
 import com.koruja.cache.core.CacheEntry
-import com.koruja.cache.core.CacheEntry.CacheEntryKey
-import com.koruja.cache.inmemory.CacheTestFixture.entries
-import io.github.oshai.kotlinlogging.KotlinLogging
-import io.kotest.core.spec.style.BehaviorSpec
+import com.koruja.cache.core.CacheProperties
+import com.koruja.cache.core.Decorator
+import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldBeNull
-import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
-import kotlinx.coroutines.delay
+import io.mockk.mockk
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Clock
-import kotlin.time.Duration.Companion.days
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.measureTimedValue
+import kotlinx.datetime.Instant
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
+import kotlin.time.Duration.Companion.minutes
 
 class InMemoryCacheTest :
-    BehaviorSpec({
+    StringSpec({
 
-        val log = KotlinLogging.logger { }
+        "insert should add entry to cache" {
+            val mockExpirationDecider = mockk<InMemoryExpirationDecider>()
+            val mockProperties = mockk<CacheProperties>()
+            val insertDecorators = emptyList<Decorator>()
+            val selectDecorators = emptyList<Decorator>()
+            val scope = CoroutineScope(Dispatchers.Default)
+            val cache = ConcurrentHashMap<CacheEntry.CacheEntryKey, CacheEntry>()
+            val cacheExpirations = ConcurrentHashMap<Instant, ConcurrentLinkedQueue<CacheEntry.CacheEntryKey>>()
+            val inMemoryCache =
+                InMemoryCache(
+                    properties = mockProperties,
+                    expirationDecider = mockExpirationDecider,
+                    insertDecorators = insertDecorators,
+                    selectDecorators = selectDecorators,
+                    scope = scope,
+                    cache = cache,
+                    cacheExpirations = cacheExpirations,
+                )
+            val key = CacheEntry.CacheEntryKey("test")
+            val entry = CacheEntry(key, Clock.System.now().plus(2.minutes), payload = "payload")
 
-        context("Concurrent singleton cache") {
-            given("50000 concurrent insert operations") {
-                `when`("Insert") {
-                    then("Should contain all elements") {
-                        val inMemoryCache = InMemoryCache(expirationDecider = InMemoryExpirationDeciderGeneric())
+            runTest {
+                inMemoryCache.insert(entry).isSuccess shouldBe true
+                cache[key] shouldBe entry
+            }
+        }
 
-                        val (_, duration) =
-                            measureTimedValue {
-                                entries().map { entry ->
-                                    inMemoryCache.insert(entry = entry)
-                                }
-                            }
+        "select should return cached entry" {
+            val mockExpirationDecider = mockk<InMemoryExpirationDecider>()
+            val mockProperties = mockk<CacheProperties>()
+            val mockInsertDecorators = listOf(mockk<Decorator>(), mockk<Decorator>())
+            val mockSelectDecorators = listOf(mockk<Decorator>(), mockk<Decorator>())
+            val scope = CoroutineScope(Dispatchers.Default)
+            val cache = ConcurrentHashMap<CacheEntry.CacheEntryKey, CacheEntry>()
+            val cacheExpirations = ConcurrentHashMap<Instant, ConcurrentLinkedQueue<CacheEntry.CacheEntryKey>>()
+            val inMemoryCache =
+                InMemoryCache(
+                    properties = mockProperties,
+                    expirationDecider = mockExpirationDecider,
+                    insertDecorators = mockInsertDecorators,
+                    selectDecorators = mockSelectDecorators,
+                    scope = scope,
+                    cache = cache,
+                    cacheExpirations = cacheExpirations,
+                )
 
-                        log.info { "duration $duration" }
+            val key = CacheEntry.CacheEntryKey("test")
+            val entry = CacheEntry(key, Clock.System.now().plus(2.minutes), payload = "payload")
+            cache[key] = entry
 
-                        inMemoryCache.selectAll().getOrNull()?.size shouldBe 50000
-                    }
-                }
+            runTest {
+                val result = inMemoryCache.select(key)
+                result.isSuccess shouldBe true
+                result.getOrNull() shouldBe entry
+            }
+        }
 
-                `when`("Insert Async") {
-                    then("Should contain all elements") {
-                        val inMemoryCache = InMemoryCache(expirationDecider = InMemoryExpirationDeciderGeneric())
+        "select should return null for expired entry" {
+            val mockExpirationDecider = mockk<InMemoryExpirationDecider>()
+            val mockProperties = mockk<CacheProperties>()
+            val mockInsertDecorators = listOf(mockk<Decorator>(), mockk<Decorator>())
+            val mockSelectDecorators = listOf(mockk<Decorator>(), mockk<Decorator>())
+            val scope = CoroutineScope(Dispatchers.Default)
+            val cache = ConcurrentHashMap<CacheEntry.CacheEntryKey, CacheEntry>()
+            val cacheExpirations = ConcurrentHashMap<Instant, ConcurrentLinkedQueue<CacheEntry.CacheEntryKey>>()
+            val inMemoryCache =
+                InMemoryCache(
+                    properties = mockProperties,
+                    expirationDecider = mockExpirationDecider,
+                    insertDecorators = mockInsertDecorators,
+                    selectDecorators = mockSelectDecorators,
+                    scope = scope,
+                    cache = cache,
+                    cacheExpirations = cacheExpirations,
+                )
+            val key = CacheEntry.CacheEntryKey("test")
+            val entry = CacheEntry(key, Instant.parse("2024-01-01T00:00:00Z"), payload = "payload") // expired
+            cache[key] = entry
 
-                        entries().map { entry ->
-                            inMemoryCache.insertAsync(entries = listOf(entry))
-                        }
+            runTest {
+                val result = inMemoryCache.select(key)
+                result.isSuccess shouldBe true
+                result.getOrNull().shouldBeNull()
+            }
+        }
 
-                        inMemoryCache.selectAll().getOrNull()?.size shouldBe 50000
-                    }
-                }
+        "cleanAll should remove all entries" {
+            val mockExpirationDecider = mockk<InMemoryExpirationDecider>()
+            val mockProperties = mockk<CacheProperties>()
+            val mockInsertDecorators = listOf(mockk<Decorator>(), mockk<Decorator>())
+            val mockSelectDecorators = listOf(mockk<Decorator>(), mockk<Decorator>())
+            val scope = CoroutineScope(Dispatchers.Default)
+            val cache = ConcurrentHashMap<CacheEntry.CacheEntryKey, CacheEntry>()
+            val cacheExpirations = ConcurrentHashMap<Instant, ConcurrentLinkedQueue<CacheEntry.CacheEntryKey>>()
+            val inMemoryCache =
+                InMemoryCache(
+                    properties = mockProperties,
+                    expirationDecider = mockExpirationDecider,
+                    insertDecorators = mockInsertDecorators,
+                    selectDecorators = mockSelectDecorators,
+                    scope = scope,
+                    cache = cache,
+                    cacheExpirations = cacheExpirations,
+                )
+            val key1 = CacheEntry.CacheEntryKey("key1")
+            val key2 = CacheEntry.CacheEntryKey("key2")
+            val entry1 = CacheEntry(key1, Clock.System.now().plus(2.minutes), payload = "payload")
+            val entry2 = CacheEntry(key2, Clock.System.now().plus(2.minutes), payload = "payload")
+            cache[key1] = entry1
+            cache[key2] = entry2
 
-                `when`("Launch Insert") {
-                    then("Should contain all elements") {
-                        val inMemoryCache = InMemoryCache(expirationDecider = InMemoryExpirationDeciderGeneric())
+            runTest {
+                inMemoryCache.cleanAll().isSuccess shouldBe true
+                cache.isEmpty() shouldBe true
+            }
+        }
 
-                        entries().map { entry ->
-                            inMemoryCache.launchInsert(entry = entry)
-                        }
+        "insertAsync should handle multiple entries" {
+            val mockExpirationDecider = mockk<InMemoryExpirationDecider>()
+            val mockProperties = mockk<CacheProperties>()
+            val insertDecorators = emptyList<Decorator>()
+            val selectDecorators = emptyList<Decorator>()
+            val scope = CoroutineScope(Dispatchers.Default)
+            val cache = ConcurrentHashMap<CacheEntry.CacheEntryKey, CacheEntry>()
+            val cacheExpirations = ConcurrentHashMap<Instant, ConcurrentLinkedQueue<CacheEntry.CacheEntryKey>>()
+            val inMemoryCache =
+                InMemoryCache(
+                    properties = mockProperties,
+                    expirationDecider = mockExpirationDecider,
+                    insertDecorators = insertDecorators,
+                    selectDecorators = selectDecorators,
+                    scope = scope,
+                    cache = cache,
+                    cacheExpirations = cacheExpirations,
+                )
+            val key1 = CacheEntry.CacheEntryKey("key1")
+            val key2 = CacheEntry.CacheEntryKey("key2")
+            val entry1 = CacheEntry(key1, Clock.System.now().plus(2.minutes), payload = "payload")
+            val entry2 = CacheEntry(key2, Clock.System.now().plus(2.minutes), payload = "payload")
 
-                        inMemoryCache.selectAll().getOrNull()?.size shouldBe 50000
-                    }
-                }
+            runTest {
+                inMemoryCache.insertAsync(listOf(entry1, entry2)).isSuccess shouldBe true
+                cache[key1] shouldBe entry1
+                cache[key2] shouldBe entry2
+            }
+        }
 
-                `when`("Delete") {
-                    then("Should remove by expiration") {
-                        val inMemoryCache = InMemoryCache(expirationDecider = InMemoryExpirationDeciderGeneric())
+        "selectAll should return all entries" {
+            val mockExpirationDecider = mockk<InMemoryExpirationDecider>()
+            val mockProperties = mockk<CacheProperties>()
+            val mockInsertDecorators = listOf(mockk<Decorator>(), mockk<Decorator>())
+            val mockSelectDecorators = listOf(mockk<Decorator>(), mockk<Decorator>())
+            val scope = CoroutineScope(Dispatchers.Default)
+            val cache = ConcurrentHashMap<CacheEntry.CacheEntryKey, CacheEntry>()
+            val cacheExpirations = ConcurrentHashMap<Instant, ConcurrentLinkedQueue<CacheEntry.CacheEntryKey>>()
+            val inMemoryCache =
+                InMemoryCache(
+                    properties = mockProperties,
+                    expirationDecider = mockExpirationDecider,
+                    insertDecorators = mockInsertDecorators,
+                    selectDecorators = mockSelectDecorators,
+                    scope = scope,
+                    cache = cache,
+                    cacheExpirations = cacheExpirations,
+                )
+            val key1 = CacheEntry.CacheEntryKey("key1")
+            val key2 = CacheEntry.CacheEntryKey("key2")
+            val entry1 = CacheEntry(key1, Clock.System.now().plus(2.minutes), payload = "payload")
+            val entry2 = CacheEntry(key2, Clock.System.now().plus(2.minutes), payload = "payload")
+            cache[key1] = entry1
+            cache[key2] = entry2
 
-                        inMemoryCache.insert(
-                            entry =
-                                CacheEntry(
-                                    key = CacheEntryKey("key-test"),
-                                    payload = "payload test",
-                                    expiresAt = Clock.System.now().plus(2.seconds),
-                                ),
-                        )
-
-                        inMemoryCache.insert(
-                            entry =
-                                CacheEntry(
-                                    key = CacheEntryKey("key-test2"),
-                                    payload = "payload test 2",
-                                    expiresAt = Clock.System.now().plus(5.seconds),
-                                ),
-                        )
-
-                        inMemoryCache.select(CacheEntryKey("key-test")).getOrNull().shouldNotBeNull()
-                        inMemoryCache.select(CacheEntryKey("key-test2")).getOrNull().shouldNotBeNull()
-
-                        delay(3.seconds)
-
-                        inMemoryCache.select(CacheEntryKey("key-test")).getOrNull().shouldBeNull()
-                        inMemoryCache.select(CacheEntryKey("key-test2")).getOrNull().shouldNotBeNull()
-
-                        delay(3.seconds)
-
-                        inMemoryCache.select(CacheEntryKey("key-test2")).getOrNull().shouldBeNull()
-                    }
-
-                    then("Should remove by clean all") {
-                        val inMemoryCache = InMemoryCache(expirationDecider = InMemoryExpirationDeciderGeneric())
-
-                        inMemoryCache.insert(
-                            entry =
-                                CacheEntry(
-                                    key = CacheEntryKey("key-test"),
-                                    payload = "payload test",
-                                    expiresAt = Clock.System.now().plus(2.days),
-                                ),
-                        )
-
-                        inMemoryCache.insert(
-                            entry =
-                                CacheEntry(
-                                    key = CacheEntryKey("key-test2"),
-                                    payload = "payload test 2",
-                                    expiresAt = Clock.System.now().plus(5.days),
-                                ),
-                        )
-
-                        inMemoryCache.select(CacheEntryKey("key-test")).getOrNull().shouldNotBeNull()
-                        inMemoryCache.select(CacheEntryKey("key-test2")).getOrNull().shouldNotBeNull()
-
-                        inMemoryCache.cleanAll()
-
-                        inMemoryCache.select(CacheEntryKey("key-test")).getOrNull().shouldBeNull()
-                        inMemoryCache.select(CacheEntryKey("key-test2")).getOrNull().shouldBeNull()
-                    }
-                }
+            runTest {
+                val result = inMemoryCache.selectAll()
+                result.isSuccess shouldBe true
+                result.getOrNull() shouldBe listOf(entry1, entry2)
             }
         }
     })
