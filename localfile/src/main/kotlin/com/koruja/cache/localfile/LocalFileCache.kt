@@ -211,18 +211,13 @@ class LocalFileCache(
         runCatching {
             scope
                 .async {
-                    val memoryEntry =
-                        if (properties.enableInMemoryCacheSupport) {
-                            inMemoryCache.selectAsync(key = key).getOrNull()
-                        } else {
-                            null
+                    select(key = key).let { result ->
+                        val throwable = result.exceptionOrNull()
+                        if (throwable != null) {
+                            throw throwable
                         }
 
-                    if (memoryEntry == null) {
-                        val file = readFileAsync(cachePath.resolve("$key${properties.fileType.fileFormat}"))
-                        Json.decodeFromString<CacheEntry>(file)
-                    } else {
-                        memoryEntry
+                        result.getOrNull()
                     }
                 }.await()
         }
